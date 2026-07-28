@@ -67,7 +67,12 @@ public class IslandDebugCommand {
 							.then(CommandManager.literal("list")
 									.executes(IslandDebugCommand::executeAdminListAll)
 									.then(CommandManager.argument("player", EntityArgumentType.player())
-											.executes(IslandDebugCommand::executeAdminListPlayer))))
+											.executes(IslandDebugCommand::executeAdminListPlayer)))
+							.then(CommandManager.literal("delete")
+									.then(CommandManager.argument("player", EntityArgumentType.player())
+											.executes(IslandDebugCommand::executeAdminDelete)
+											.then(CommandManager.literal("confirm")
+													.executes(IslandDebugCommand::executeAdminDeleteConfirm)))))
 					// Minimal temporary trust/untrust: will be replaced by the real /island trust
 					// and /island untrust (with proper validation and UX) in a future sprint.
 					// Intentionally NOT gated behind hasPermissionLevel(2): any player manages their own island.
@@ -211,6 +216,54 @@ public class IslandDebugCommand {
 		}
 
 		source.sendFeedback(() -> Text.literal("Isla de Spawn ampliada a tamaño " + newSize + "."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminDelete(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity admin = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(target.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal(target.getGameProfile().getName() + " no tiene ninguna isla."));
+			return 0;
+		}
+
+		try {
+			IslandCoreMod.DELETION_SERVICE.requestDeletion(maybeIsland.get().getIslandId(), admin.getUuid());
+		} catch (IllegalArgumentException | IllegalStateException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal("¿Seguro que quieres borrar la isla de " + targetName
+				+ "? Usa /ic admin delete " + targetName + " confirm en los próximos 30 segundos."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminDeleteConfirm(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity admin = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(target.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal(target.getGameProfile().getName() + " no tiene ninguna isla."));
+			return 0;
+		}
+
+		boolean confirmed = IslandCoreMod.DELETION_SERVICE.confirmDeletion(maybeIsland.get().getIslandId(), admin.getUuid());
+		if (!confirmed) {
+			source.sendError(Text.literal("No hay ninguna solicitud de borrado pendiente (o ha expirado)."));
+			return 0;
+		}
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal("La isla de " + targetName + " se está borrando..."), false);
 
 		return 1;
 	}

@@ -63,6 +63,10 @@ public class IslandCommand {
 										.suggests((ctx, builder) -> CommandSource.suggestMatching(SETTING_NAMES, builder))
 										.then(CommandManager.argument("value", BoolArgumentType.bool())
 												.executes(IslandCommand::executeSettings))))
+						.then(CommandManager.literal("delete")
+								.executes(IslandCommand::executeDelete)
+								.then(CommandManager.literal("confirm")
+										.executes(IslandCommand::executeDeleteConfirm)))
 				)
 		);
 	}
@@ -225,6 +229,52 @@ public class IslandCommand {
 		IslandCoreMod.ISLAND_REGISTRY.updateIslandSetting(island.getIslandId(), setting, value);
 
 		source.sendFeedback(() -> Text.literal(settingName.toLowerCase() + " = " + value), false);
+
+		return 1;
+	}
+
+	private static int executeDelete(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		try {
+			IslandCoreMod.DELETION_SERVICE.requestDeletion(maybeIsland.get().getIslandId(), player.getUuid());
+		} catch (IllegalArgumentException | IllegalStateException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal(
+				"¿Seguro que quieres borrar tu isla? Esta acción no se puede deshacer. "
+						+ "Usa /island delete confirm en los próximos 30 segundos para confirmar."), false);
+
+		return 1;
+	}
+
+	private static int executeDeleteConfirm(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		boolean confirmed = IslandCoreMod.DELETION_SERVICE.confirmDeletion(maybeIsland.get().getIslandId(), player.getUuid());
+		if (!confirmed) {
+			source.sendError(Text.literal(
+					"No hay ninguna solicitud de borrado pendiente (o ha expirado). Usa /island delete primero."));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("Tu isla se está borrando..."), false);
 
 		return 1;
 	}

@@ -42,3 +42,8 @@ hs_err_*.log
 replay_*.log
 *.hprof
 *.jfr
+
+# dev-server console scratch files (named pipe + log used to pilot the test server; not project source)
+
+cmd.pipe.lnk
+server_console.log

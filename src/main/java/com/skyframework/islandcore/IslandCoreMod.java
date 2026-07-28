@@ -4,6 +4,8 @@ import com.skyframework.islandcore.api.permission.PermissionProvider;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
 import com.skyframework.islandcore.command.IslandCommand;
 import com.skyframework.islandcore.command.debug.IslandDebugCommand;
+import com.skyframework.islandcore.island.lifecycle.IslandDeletionService;
+import com.skyframework.islandcore.island.lifecycle.IslandDeletionServiceImpl;
 import com.skyframework.islandcore.island.registry.IslandRegistryImpl;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
@@ -41,6 +43,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static AccessController ACCESS_CONTROLLER;
 	public static PermissionProvider PERMISSION_PROVIDER;
 	public static TeleportManager TELEPORT_MANAGER;
+	public static IslandDeletionService DELETION_SERVICE;
 
 	@Override
 	public void onInitialize() {
@@ -67,6 +70,12 @@ public class IslandCoreMod implements ModInitializer {
 
 		TELEPORT_MANAGER = new TeleportManagerImpl(new VanillaTeleportBackend());
 		ServerTickEvents.END_SERVER_TICK.register(server -> TELEPORT_MANAGER.tickAll());
+
+		// Must be assigned before the server actually starts: IslandRegistryImpl.initializeStorage()
+		// (triggered by SERVER_STARTED) calls DELETION_SERVICE.executeDeletion() to resume any
+		// deletion interrupted by a previous shutdown. onInitialize() finishes well before that fires.
+		DELETION_SERVICE = new IslandDeletionServiceImpl(new VanillaTeleportBackend());
+		ServerTickEvents.END_SERVER_TICK.register(server -> DELETION_SERVICE.tickAll());
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
 			if (entity instanceof ServerPlayerEntity player) {
 				TELEPORT_MANAGER.cancelPendingTeleport(player.getUuid(), "has recibido daño");

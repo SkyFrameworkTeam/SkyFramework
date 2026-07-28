@@ -1,5 +1,6 @@
 package com.skyframework.islandcore.island.registry;
 
+import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandState;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
@@ -28,6 +29,7 @@ import net.minecraft.world.World;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -75,11 +77,24 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 	public void initializeStorage(Path worldSaveDir) {
 		storage = new NbtIslandStorage(worldSaveDir.resolve("islandcore").resolve("islands"));
 
+		List<UUID> interruptedDeletions = new ArrayList<>();
+
 		for (IslandData island : storage.loadAll()) {
 			islandsById.put(island.getIslandId(), island);
 			islandIdByOwner.put(island.getOwnerUuid(), island.getIslandId());
 			gridAllocator.occupySlot(new GridCoordinate(island.getGridX(), island.getGridZ()));
 			spatialIndex.registerIsland(island.getIslandId(), island.getPlotBounds());
+
+			if (island.getState() == IslandState.DELETING) {
+				interruptedDeletions.add(island.getIslandId());
+			}
+		}
+
+		// Resume any deletion that was mid-flight when the server last stopped. By this point
+		// IslandCoreMod.DELETION_SERVICE is already set (onInitialize() finished long before
+		// this SERVER_STARTED-triggered method runs), and executeDeletion() is idempotent.
+		for (UUID islandId : interruptedDeletions) {
+			IslandCoreMod.DELETION_SERVICE.executeDeletion(islandId);
 		}
 	}
 
@@ -198,9 +213,28 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 
 	@Override
 	public void deleteIsland(UUID islandId) {
-		IslandData removed = islandsById.remove(islandId);
-		if (removed != null) {
-			islandIdByOwner.remove(removed.getOwnerUuid());
+		IslandData island = islandsById.get(islandId);
+		if (island == null) {
+			// Already gone: idempotent no-op.
+			return;
+		}
+
+		spatialIndex.unregisterIsland(islandId);
+		gridAllocator.releaseSlot(new GridCoordinate(island.getGridX(), island.getGridZ()));
+		if (storage != null) {
+			storage.delete(islandId);
+		}
+
+		islandsById.remove(islandId);
+		islandIdByOwner.remove(island.getOwnerUuid());
+	}
+
+	@Override
+	public void markIslandDeleting(UUID islandId) {
+		IslandData island = islandsById.get(islandId);
+		if (island != null) {
+			island.setState(IslandState.DELETING);
+			saveIfStorageReady(island);
 		}
 	}
 

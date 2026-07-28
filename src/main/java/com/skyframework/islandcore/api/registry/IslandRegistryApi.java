@@ -28,8 +28,14 @@ public interface IslandRegistryApi {
 
 	Island createSpawnIsland(RegistryKey<World> dimension, int size);
 
-	// TODO: not yet paired with storage/grid/spatial-index cleanup; that's a future sprint.
+	// Full cleanup: unregisters from the spatial index, releases the grid slot, deletes from
+	// storage, and removes from the in-memory maps. Idempotent (a no-op if already deleted).
+	// Called by IslandDeletionService as the final step of a confirmed island deletion.
 	void deleteIsland(UUID islandId);
+
+	// Marks the island DELETING and persists immediately, as a recovery checkpoint before
+	// IslandDeletionService starts touching the world. Called by IslandDeletionService.
+	void markIslandDeleting(UUID islandId);
 
 	void addMember(UUID islandId, IslandMember member);
 
