@@ -17,7 +17,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
@@ -229,20 +228,10 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 	}
 
 	private void removeEntities(Island island) {
-		if (server == null) {
-			return;
-		}
-
-		ServerWorld world = server.getWorld(island.getDimension());
-		if (world == null) {
-			return;
-		}
-
-		IslandBounds bounds = island.getBounds();
-		Box box = Box.enclosing(bounds.min(), bounds.max());
-
-		for (Entity entity : world.getOtherEntities(null, box, entity -> !(entity instanceof PlayerEntity))) {
-			entity.discard();
+		for (Entity entity : IslandCoreMod.ENTITY_TRACKER.getEntitiesInIsland(island.getIslandId())) {
+			if (!(entity instanceof PlayerEntity)) {
+				entity.discard();
+			}
 		}
 	}
 

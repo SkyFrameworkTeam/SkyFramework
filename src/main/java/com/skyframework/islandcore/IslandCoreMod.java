@@ -6,6 +6,8 @@ import com.skyframework.islandcore.command.IslandCommand;
 import com.skyframework.islandcore.island.biome.BiomeTierRegistry;
 import com.skyframework.islandcore.island.biome.BiomeTierRegistryImpl;
 import com.skyframework.islandcore.island.biome.IslandBiomeApplier;
+import com.skyframework.islandcore.island.entity.IslandEntityTracker;
+import com.skyframework.islandcore.island.entity.IslandEntityTrackerImpl;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionService;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionServiceImpl;
 import com.skyframework.islandcore.island.lifecycle.InviteManager;
@@ -51,6 +53,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static InviteManager INVITE_MANAGER;
 	public static BiomeTierRegistry BIOME_TIER_REGISTRY;
 	public static IslandBiomeApplier BIOME_APPLIER;
+	public static IslandEntityTracker ENTITY_TRACKER;
 
 	@Override
 	public void onInitialize() {
@@ -63,6 +66,7 @@ public class IslandCoreMod implements ModInitializer {
 		INVITE_MANAGER = new InviteManagerImpl();
 		BIOME_TIER_REGISTRY = new BiomeTierRegistryImpl();
 		BIOME_APPLIER = new IslandBiomeApplier();
+		ENTITY_TRACKER = new IslandEntityTrackerImpl();
 		ProtectionListeners.register();
 		IslandCommand.register();
 

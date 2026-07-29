@@ -171,7 +171,7 @@ public class IslandCommand {
 			return 0;
 		}
 
-		IslandMessages.sendIslandDetails(source, maybeIsland.get());
+		IslandMessages.sendIslandSummaryPlayer(source, maybeIsland.get());
 		return 1;
 	}
 
@@ -185,7 +185,7 @@ public class IslandCommand {
 			return 0;
 		}
 
-		IslandMessages.sendIslandDetails(source, maybeIsland.get());
+		IslandMessages.sendIslandSummaryPlayer(source, maybeIsland.get());
 		return 1;
 	}
 
@@ -631,7 +631,7 @@ public class IslandCommand {
 			return 0;
 		}
 
-		IslandMessages.sendIslandDetails(source, maybeIsland.get());
+		IslandMessages.sendIslandSummaryAdmin(source, maybeIsland.get());
 		return 1;
 	}
 
