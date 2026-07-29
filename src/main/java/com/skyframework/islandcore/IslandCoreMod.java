@@ -3,6 +3,9 @@ package com.skyframework.islandcore;
 import com.skyframework.islandcore.api.permission.PermissionProvider;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
 import com.skyframework.islandcore.command.IslandCommand;
+import com.skyframework.islandcore.island.biome.BiomeTierRegistry;
+import com.skyframework.islandcore.island.biome.BiomeTierRegistryImpl;
+import com.skyframework.islandcore.island.biome.IslandBiomeApplier;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionService;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionServiceImpl;
 import com.skyframework.islandcore.island.lifecycle.InviteManager;
@@ -46,6 +49,8 @@ public class IslandCoreMod implements ModInitializer {
 	public static TeleportManager TELEPORT_MANAGER;
 	public static IslandDeletionService DELETION_SERVICE;
 	public static InviteManager INVITE_MANAGER;
+	public static BiomeTierRegistry BIOME_TIER_REGISTRY;
+	public static IslandBiomeApplier BIOME_APPLIER;
 
 	@Override
 	public void onInitialize() {
@@ -56,6 +61,8 @@ public class IslandCoreMod implements ModInitializer {
 		ISLAND_REGISTRY = new IslandRegistryImpl();
 		ACCESS_CONTROLLER = new AccessControllerImpl();
 		INVITE_MANAGER = new InviteManagerImpl();
+		BIOME_TIER_REGISTRY = new BiomeTierRegistryImpl();
+		BIOME_APPLIER = new IslandBiomeApplier();
 		ProtectionListeners.register();
 		IslandCommand.register();
 

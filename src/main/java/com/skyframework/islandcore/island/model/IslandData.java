@@ -33,6 +33,7 @@ public class IslandData implements Island {
 	private int plotSize;
 	private IslandType islandType;
 	private BlockPos homeLocation;
+	private Instant lastBiomeChangeAt;
 	private IslandState state;
 	private final Set<IslandMember> members = new LinkedHashSet<>();
 	private final Map<IslandSetting, Boolean> settings = new EnumMap<>(IslandSetting.class);
@@ -68,6 +69,7 @@ public class IslandData implements Island {
 		this.plotSize = plotSize;
 		this.islandType = islandType;
 		this.homeLocation = homeLocation;
+		this.lastBiomeChangeAt = null;
 		this.state = state;
 		this.createdAt = createdAt;
 		this.updatedAt = createdAt;
@@ -92,13 +94,15 @@ public class IslandData implements Island {
 			Instant createdAt,
 			Instant updatedAt,
 			Collection<IslandMember> members,
-			Map<IslandSetting, Boolean> settings
+			Map<IslandSetting, Boolean> settings,
+			Instant lastBiomeChangeAt
 	) {
 		this(islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
 				islandSize, plotSize, islandType, homeLocation, state, createdAt);
 		this.updatedAt = updatedAt;
 		this.members.addAll(members);
 		this.settings.putAll(settings);
+		this.lastBiomeChangeAt = lastBiomeChangeAt;
 	}
 
 	@Override
@@ -193,6 +197,16 @@ public class IslandData implements Island {
 
 	public void setHomeLocation(BlockPos homeLocation) {
 		this.homeLocation = homeLocation;
+		touch();
+	}
+
+	@Override
+	public Instant getLastBiomeChangeAt() {
+		return lastBiomeChangeAt;
+	}
+
+	public void setLastBiomeChangeAt(Instant lastBiomeChangeAt) {
+		this.lastBiomeChangeAt = lastBiomeChangeAt;
 		touch();
 	}
 

@@ -8,6 +8,7 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,6 +47,8 @@ public interface IslandRegistryApi {
 	void resizeIsland(UUID islandId, int newSize);
 
 	void updateHomeLocation(UUID islandId, BlockPos newHome);
+
+	void updateLastBiomeChangeAt(UUID islandId, Instant instant);
 
 	void updateIslandSetting(UUID islandId, IslandSetting setting, boolean value);
 

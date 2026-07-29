@@ -7,11 +7,14 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandPermission;
 import com.skyframework.islandcore.api.permission.IslandPermissions;
+import com.skyframework.islandcore.island.biome.BiomeTier;
 import com.skyframework.islandcore.island.generation.BasicPlatformGenerator;
 import com.skyframework.islandcore.island.lifecycle.EvictionTargetResolver;
 import com.skyframework.islandcore.island.model.IslandMember;
@@ -24,8 +27,11 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandSource;
 import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.command.argument.GameProfileArgumentType;
+import net.minecraft.command.argument.IdentifierArgumentType;
+import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -34,13 +40,17 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraft.world.biome.Biome;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 // The one and only /island command tree. The old /ic and /islandcore debug tree
 // (command.debug.IslandDebugCommand) has been fully retired as of Sprint 12.
@@ -97,6 +107,10 @@ public class IslandCommand {
 						.then(CommandManager.literal("kick")
 								.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
 										.executes(IslandCommand::executeKick)))
+						.then(CommandManager.literal("biome")
+								.then(CommandManager.argument("biome", IdentifierArgumentType.identifier())
+										.suggests(IslandCommand::suggestBiomes)
+										.executes(IslandCommand::executeBiome)))
 						.then(CommandManager.literal("admin")
 								.requires(source -> source.hasPermissionLevel(2))
 								.then(CommandManager.literal("spawn")
@@ -491,6 +505,103 @@ public class IslandCommand {
 		source.sendFeedback(() -> Text.literal(targetProfile.getName() + " ha sido expulsado de tu isla."), false);
 
 		return 1;
+	}
+
+	private static CompletableFuture<Suggestions> suggestBiomes(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
+		ServerPlayerEntity player = ctx.getSource().getPlayer();
+		if (player == null) {
+			return builder.buildFuture();
+		}
+
+		Collection<Identifier> availableBiomes =
+				IslandCoreMod.BIOME_TIER_REGISTRY.getAvailableBiomes(player.getUuid(), IslandCoreMod.PERMISSION_PROVIDER);
+		return CommandSource.suggestIdentifiers(availableBiomes, builder);
+	}
+
+	private static int executeBiome(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		Identifier biomeId = IdentifierArgumentType.getIdentifier(ctx, "biome");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		// getIslandByOwner already only returns islands this player literally owns, so this is
+		// currently redundant, but kept explicit per spec (same pattern as executeSettings).
+		if (!island.getOwnerUuid().equals(player.getUuid())) {
+			source.sendError(Text.literal("Solo el propietario de la isla puede cambiar su bioma."));
+			return 0;
+		}
+
+		Registry<Biome> biomeRegistry = source.getRegistryManager().get(RegistryKeys.BIOME);
+		Optional<RegistryEntry.Reference<Biome>> maybeBiome = biomeRegistry.getEntry(biomeId);
+		if (maybeBiome.isEmpty()) {
+			source.sendError(Text.literal("El bioma " + biomeId + " no existe."));
+			return 0;
+		}
+
+		if (!IslandCoreMod.BIOME_TIER_REGISTRY.canUse(player.getUuid(), biomeId, IslandCoreMod.PERMISSION_PROVIDER)) {
+			List<BiomeTier> tiers = IslandCoreMod.BIOME_TIER_REGISTRY.getTiersContaining(biomeId);
+			if (tiers.isEmpty()) {
+				source.sendError(Text.literal("El bioma " + biomeId + " no está disponible."));
+			} else {
+				String tierIds = tiers.stream().map(BiomeTier::id).collect(Collectors.joining(", "));
+				source.sendError(Text.literal(
+						"No tienes acceso al bioma " + biomeId + ". Se desbloquea con el/los tier(s): " + tierIds + "."));
+			}
+			return 0;
+		}
+
+		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(player.getUuid(), IslandPermissions.BIOME_COOLDOWN_BYPASS)) {
+			Instant lastChange = island.getLastBiomeChangeAt();
+			if (lastChange != null) {
+				long cooldownSeconds = IslandCoreMod.PERMISSION_PROVIDER.getBiomeCooldownSeconds(player.getUuid());
+				Instant availableAt = lastChange.plusSeconds(cooldownSeconds);
+				if (Instant.now().isBefore(availableAt)) {
+					String remaining = formatDuration(Duration.between(Instant.now(), availableAt));
+					source.sendError(Text.literal(
+							"Todavía no puedes volver a cambiar el bioma de tu isla. Podrás hacerlo en " + remaining + "."));
+					return 0;
+				}
+			}
+		}
+
+		ServerWorld world = source.getServer().getWorld(island.getDimension());
+		if (world == null) {
+			source.sendError(Text.literal("La dimensión de tu isla no está disponible ahora mismo."));
+			return 0;
+		}
+
+		IslandCoreMod.BIOME_APPLIER.enqueue(world, island.getPlotBounds(), maybeBiome.get(), player.getUuid());
+		IslandCoreMod.ISLAND_REGISTRY.updateLastBiomeChangeAt(island.getIslandId(), Instant.now());
+
+		source.sendFeedback(() -> Text.literal(
+				"Cambiando el bioma de tu isla a " + biomeId + "... puede tardar unos segundos en islas grandes."), false);
+
+		return 1;
+	}
+
+	private static String formatDuration(Duration duration) {
+		long totalSeconds = Math.max(1, duration.getSeconds());
+		long days = totalSeconds / 86400;
+		long hours = (totalSeconds % 86400) / 3600;
+		long minutes = (totalSeconds % 3600) / 60;
+		long seconds = totalSeconds % 60;
+
+		if (days > 0) {
+			return days + (days == 1 ? " día " : " días ") + hours + (hours == 1 ? " hora" : " horas");
+		}
+		if (hours > 0) {
+			return hours + (hours == 1 ? " hora " : " horas ") + minutes + (minutes == 1 ? " minuto" : " minutos");
+		}
+		if (minutes > 0) {
+			return minutes + (minutes == 1 ? " minuto " : " minutos ") + seconds + (seconds == 1 ? " segundo" : " segundos");
+		}
+		return seconds + (seconds == 1 ? " segundo" : " segundos");
 	}
 
 	private static int executeAdminListAll(CommandContext<ServerCommandSource> ctx) {

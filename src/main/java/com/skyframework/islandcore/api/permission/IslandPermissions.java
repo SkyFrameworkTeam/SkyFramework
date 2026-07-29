@@ -32,6 +32,14 @@ public final class IslandPermissions {
 	// Cooldown applied to any player with no cooldown tier node granted at all.
 	public static final int DEFAULT_HOME_COOLDOWN_SECONDS = 600;
 
+	// Same criteria as TELEPORT_COOLDOWN_NODE_PREFIX above: the LOWEST granted <prefix><N> tier
+	// wins, and BIOME_COOLDOWN_BYPASS (which shares this prefix) skips the cooldown entirely.
+	public static final String BIOME_COOLDOWN_NODE_PREFIX = "islandcore.biome.cooldown.";
+	public static final String BIOME_COOLDOWN_BYPASS = "islandcore.biome.cooldown.bypass";
+
+	// Cooldown applied to any player with no cooldown tier node granted at all: 7 days.
+	public static final long DEFAULT_BIOME_COOLDOWN_SECONDS = 604800L;
+
 	private IslandPermissions() {
 	}
 }

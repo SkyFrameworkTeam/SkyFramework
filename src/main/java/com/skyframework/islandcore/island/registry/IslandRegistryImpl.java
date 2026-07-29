@@ -266,6 +266,15 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 	}
 
 	@Override
+	public void updateLastBiomeChangeAt(UUID islandId, Instant instant) {
+		IslandData island = islandsById.get(islandId);
+		if (island != null) {
+			island.setLastBiomeChangeAt(instant);
+			saveIfStorageReady(island);
+		}
+	}
+
+	@Override
 	public void updateIslandSetting(UUID islandId, IslandSetting setting, boolean value) {
 		IslandData island = islandsById.get(islandId);
 		if (island != null) {

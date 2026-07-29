@@ -43,6 +43,9 @@ public interface Island {
 
 	BlockPos getHomeLocation();
 
+	// Null if the biome has never been changed via /island biome.
+	Instant getLastBiomeChangeAt();
+
 	IslandState getState();
 
 	Set<IslandMember> getMembers();

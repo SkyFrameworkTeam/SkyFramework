@@ -9,4 +9,6 @@ public interface PermissionProvider {
 	int getHighestSizeAllowed(UUID playerUuid);
 
 	int getHomeCooldownSeconds(UUID playerUuid);
+
+	long getBiomeCooldownSeconds(UUID playerUuid);
 }

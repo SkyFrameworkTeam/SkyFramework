@@ -26,4 +26,9 @@ public class FallbackPermissionProvider implements PermissionProvider {
 	public int getHomeCooldownSeconds(UUID playerUuid) {
 		return IslandPermissions.DEFAULT_HOME_COOLDOWN_SECONDS;
 	}
+
+	@Override
+	public long getBiomeCooldownSeconds(UUID playerUuid) {
+		return IslandPermissions.DEFAULT_BIOME_COOLDOWN_SECONDS;
+	}
 }
