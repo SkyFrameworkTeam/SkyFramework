@@ -1,19 +1,29 @@
 package com.skyframework.islandcore.command;
 
+import com.mojang.authlib.GameProfile;
+
 import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
+import com.skyframework.islandcore.api.island.IslandPermission;
 import com.skyframework.islandcore.api.permission.IslandPermissions;
 import com.skyframework.islandcore.island.generation.BasicPlatformGenerator;
+import com.skyframework.islandcore.island.lifecycle.EvictionTargetResolver;
+import com.skyframework.islandcore.island.model.IslandMember;
+import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.teleport.VanillaTeleportBackend;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
 import net.minecraft.command.CommandSource;
+import net.minecraft.command.argument.EntityArgumentType;
+import net.minecraft.command.argument.GameProfileArgumentType;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.command.CommandManager;
@@ -25,18 +35,22 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
+import java.time.Instant;
+import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-// First real /island command tree, distinct from the temporary /ic and /islandcore debug tree.
-// Other subcommands (trust, ...) still live only under debug and will be
-// migrated here one at a time in future sprints.
+// The one and only /island command tree. The old /ic and /islandcore debug tree
+// (command.debug.IslandDebugCommand) has been fully retired as of Sprint 12.
 public class IslandCommand {
 
 	private static final RegistryKey<World> ISLANDS_DIMENSION =
 			RegistryKey.of(RegistryKeys.WORLD, Identifier.of("islandcore", "islands"));
 
 	private static final BasicPlatformGenerator PLATFORM_GENERATOR = new BasicPlatformGenerator();
+	private static final VanillaTeleportBackend TELEPORT_BACKEND = new VanillaTeleportBackend();
 
 	private static final List<String> SETTING_NAMES = List.of("firespread", "pvp", "mobdamage");
 
@@ -67,6 +81,40 @@ public class IslandCommand {
 								.executes(IslandCommand::executeDelete)
 								.then(CommandManager.literal("confirm")
 										.executes(IslandCommand::executeDeleteConfirm)))
+						.then(CommandManager.literal("limits")
+								.executes(IslandCommand::executeLimits))
+						.then(CommandManager.literal("invite")
+								.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+										.executes(IslandCommand::executeInvite)))
+						.then(CommandManager.literal("accept")
+								.executes(IslandCommand::executeAccept))
+						.then(CommandManager.literal("trust")
+								.then(CommandManager.argument("player", EntityArgumentType.player())
+										.executes(IslandCommand::executeTrust)))
+						.then(CommandManager.literal("untrust")
+								.then(CommandManager.argument("player", EntityArgumentType.player())
+										.executes(IslandCommand::executeUntrust)))
+						.then(CommandManager.literal("kick")
+								.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+										.executes(IslandCommand::executeKick)))
+						.then(CommandManager.literal("admin")
+								.requires(source -> source.hasPermissionLevel(2))
+								.then(CommandManager.literal("spawn")
+										.then(CommandManager.literal("create")
+												.then(CommandManager.argument("size", IntegerArgumentType.integer(1))
+														.executes(IslandCommand::executeAdminSpawnCreate)))
+										.then(CommandManager.literal("resize")
+												.then(CommandManager.argument("size", IntegerArgumentType.integer(1))
+														.executes(IslandCommand::executeAdminSpawnResize))))
+								.then(CommandManager.literal("list")
+										.executes(IslandCommand::executeAdminListAll)
+										.then(CommandManager.argument("player", EntityArgumentType.player())
+												.executes(IslandCommand::executeAdminListPlayer)))
+								.then(CommandManager.literal("delete")
+										.then(CommandManager.argument("player", EntityArgumentType.player())
+												.executes(IslandCommand::executeAdminDelete)
+												.then(CommandManager.literal("confirm")
+														.executes(IslandCommand::executeAdminDeleteConfirm)))))
 				)
 		);
 	}
@@ -275,6 +323,292 @@ public class IslandCommand {
 		}
 
 		source.sendFeedback(() -> Text.literal("Tu isla se está borrando..."), false);
+
+		return 1;
+	}
+
+	private static int executeLimits(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		UUID playerUuid = player.getUuid();
+
+		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(playerUuid);
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+
+		String sizeLine;
+		if (maybeIsland.isPresent()) {
+			int currentSize = maybeIsland.get().getIslandSize();
+			sizeLine = currentSize >= maxSize
+					? "Ya tienes el tamaño máximo permitido (" + maxSize + ")."
+					: "Tamaño máximo permitido: " + maxSize + " (tu isla actual: " + currentSize
+							+ " — puedes ejecutar /island upgrade).";
+		} else {
+			sizeLine = "Tamaño máximo permitido: " + maxSize + ".";
+		}
+
+		String cooldownLine = IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.TELEPORT_COOLDOWN_BYPASS)
+				? "No tienes ningún cooldown para /island home."
+				: "Cooldown de /island home: " + IslandCoreMod.PERMISSION_PROVIDER.getHomeCooldownSeconds(playerUuid) + " segundos.";
+
+		String message = sizeLine + "\n" + cooldownLine;
+		source.sendFeedback(() -> Text.literal(message), false);
+
+		return 1;
+	}
+
+	private static int executeInvite(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		GameProfile targetProfile = GameProfileArgumentType.getProfileArgument(ctx, "player").iterator().next();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+
+		try {
+			IslandCoreMod.INVITE_MANAGER.invite(island.getIslandId(), player.getUuid(), targetProfile.getId());
+		} catch (IllegalArgumentException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		String inviterName = player.getGameProfile().getName();
+		ServerPlayerEntity targetPlayer = source.getServer().getPlayerManager().getPlayer(targetProfile.getId());
+
+		if (targetPlayer != null) {
+			targetPlayer.sendMessage(Text.literal(
+					inviterName + " te ha invitado a su isla. Usa /island accept en los próximos 5 minutos para unirte."), false);
+			source.sendFeedback(() -> Text.literal("Invitación enviada a " + targetProfile.getName() + "."), false);
+		} else {
+			source.sendFeedback(() -> Text.literal(
+					"Invitación registrada para " + targetProfile.getName()
+							+ " (no está conectado ahora mismo, pero podrá aceptarla si entra en los próximos 5 minutos)."), false);
+		}
+
+		return 1;
+	}
+
+	private static int executeAccept(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = IslandCoreMod.INVITE_MANAGER.acceptInvite(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna invitación pendiente (o ha caducado)."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		source.sendFeedback(() -> Text.literal("¡Te has unido a la isla!"), false);
+
+		ServerPlayerEntity owner = source.getServer().getPlayerManager().getPlayer(island.getOwnerUuid());
+		if (owner != null) {
+			owner.sendMessage(Text.literal(player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a tu isla."), false);
+		}
+
+		return 1;
+	}
+
+	private static int executeTrust(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity executor = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes una isla."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		IslandMember member = new IslandMember(target.getUuid(), IslandRole.TRUSTED, Instant.now(), EnumSet.noneOf(IslandPermission.class));
+		IslandCoreMod.ISLAND_REGISTRY.addMember(island.getIslandId(), member);
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal(targetName + " ahora es de confianza en tu isla."), false);
+
+		return 1;
+	}
+
+	private static int executeUntrust(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity executor = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes una isla."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), target.getUuid());
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal(targetName + " ya no tiene acceso especial a tu isla."), false);
+
+		return 1;
+	}
+
+	private static int executeKick(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		GameProfile targetProfile = GameProfileArgumentType.getProfileArgument(ctx, "player").iterator().next();
+		UUID targetUuid = targetProfile.getId();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		IslandRole role = island.getRoleOf(targetUuid);
+		if (role != IslandRole.MEMBER && role != IslandRole.TRUSTED) {
+			source.sendError(Text.literal(targetProfile.getName() + " no es miembro de tu isla."));
+			return 0;
+		}
+
+		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), targetUuid);
+
+		ServerPlayerEntity targetPlayer = source.getServer().getPlayerManager().getPlayer(targetUuid);
+		if (targetPlayer != null
+				&& targetPlayer.getWorld().getRegistryKey().equals(island.getDimension())
+				&& island.getBounds().contains(targetPlayer.getBlockPos())) {
+			EvictionTargetResolver.resolve(source.getServer())
+					.ifPresent(target -> TELEPORT_BACKEND.teleport(targetPlayer, target.world(), target.pos()));
+		}
+
+		if (targetPlayer != null) {
+			targetPlayer.sendMessage(Text.literal(
+					"Has sido expulsado de la isla de " + player.getGameProfile().getName() + "."), false);
+		}
+
+		source.sendFeedback(() -> Text.literal(targetProfile.getName() + " ha sido expulsado de tu isla."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminListAll(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+
+		Collection<Island> islands = IslandCoreMod.ISLAND_REGISTRY.getAllIslands();
+		if (islands.isEmpty()) {
+			source.sendFeedback(() -> Text.literal("No islands exist yet."), false);
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("Islands (" + islands.size() + "):"), false);
+		for (Island island : islands) {
+			IslandMessages.sendIslandSummary(source, island);
+		}
+
+		return islands.size();
+	}
+
+	private static int executeAdminListPlayer(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(target.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal(target.getGameProfile().getName() + " no tiene ninguna isla."));
+			return 0;
+		}
+
+		IslandMessages.sendIslandDetails(source, maybeIsland.get());
+		return 1;
+	}
+
+	private static int executeAdminSpawnCreate(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		int size = IntegerArgumentType.getInteger(ctx, "size");
+
+		Island island;
+		try {
+			island = IslandCoreMod.ISLAND_REGISTRY.createSpawnIsland(ISLANDS_DIMENSION, size);
+		} catch (IllegalStateException e) {
+			source.sendError(Text.literal("The spawn island already exists."));
+			return 0;
+		}
+
+		BlockPos center = island.getCenter();
+		source.sendFeedback(() -> Text.literal("Created spawn island " + island.getIslandId()
+				+ " at (" + center.getX() + ", " + center.getY() + ", " + center.getZ() + ")"), false);
+
+		return 1;
+	}
+
+	private static int executeAdminSpawnResize(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		int newSize = IntegerArgumentType.getInteger(ctx, "size");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("La isla de Spawn todavía no existe."));
+			return 0;
+		}
+
+		try {
+			IslandCoreMod.ISLAND_REGISTRY.resizeIsland(maybeIsland.get().getIslandId(), newSize);
+		} catch (IllegalArgumentException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("Isla de Spawn ampliada a tamaño " + newSize + "."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminDelete(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity admin = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(target.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal(target.getGameProfile().getName() + " no tiene ninguna isla."));
+			return 0;
+		}
+
+		try {
+			IslandCoreMod.DELETION_SERVICE.requestDeletion(maybeIsland.get().getIslandId(), admin.getUuid());
+		} catch (IllegalArgumentException | IllegalStateException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal("¿Seguro que quieres borrar la isla de " + targetName
+				+ "? Usa /island admin delete " + targetName + " confirm en los próximos 30 segundos."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminDeleteConfirm(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity admin = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(target.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal(target.getGameProfile().getName() + " no tiene ninguna isla."));
+			return 0;
+		}
+
+		boolean confirmed = IslandCoreMod.DELETION_SERVICE.confirmDeletion(maybeIsland.get().getIslandId(), admin.getUuid());
+		if (!confirmed) {
+			source.sendError(Text.literal("No hay ninguna solicitud de borrado pendiente (o ha expirado)."));
+			return 0;
+		}
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal("La isla de " + targetName + " se está borrando..."), false);
 
 		return 1;
 	}

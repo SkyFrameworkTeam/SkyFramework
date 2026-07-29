@@ -212,8 +212,8 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 			return;
 		}
 
-		EvictionTarget target = resolveEvictionTarget();
-		if (target == null) {
+		Optional<EvictionTargetResolver.EvictionTarget> target = EvictionTargetResolver.resolve(server);
+		if (target.isEmpty()) {
 			return;
 		}
 
@@ -224,25 +224,8 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 			if (!island.getBounds().contains(player.getBlockPos())) {
 				continue;
 			}
-			teleportBackend.teleport(player, target.world(), target.pos());
+			teleportBackend.teleport(player, target.get().world(), target.get().pos());
 		}
-	}
-
-	private EvictionTarget resolveEvictionTarget() {
-		Optional<Island> spawnIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
-		if (spawnIsland.isPresent()) {
-			Island spawn = spawnIsland.get();
-			ServerWorld world = server.getWorld(spawn.getDimension());
-			if (world != null) {
-				return new EvictionTarget(world, spawn.getHomeLocation());
-			}
-		}
-
-		ServerWorld overworld = server.getWorld(World.OVERWORLD);
-		if (overworld == null) {
-			return null;
-		}
-		return new EvictionTarget(overworld, overworld.getSpawnPos());
 	}
 
 	private void removeEntities(Island island) {
@@ -278,9 +261,6 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 			this.requestedBy = requestedBy;
 			this.expiresAt = expiresAt;
 		}
-	}
-
-	private record EvictionTarget(ServerWorld world, BlockPos pos) {
 	}
 
 	// Cursor over a bounding box, cleared BLOCKS_PER_TICK positions at a time across ticks

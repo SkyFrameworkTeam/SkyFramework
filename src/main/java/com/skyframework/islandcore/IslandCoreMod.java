@@ -3,9 +3,10 @@ package com.skyframework.islandcore;
 import com.skyframework.islandcore.api.permission.PermissionProvider;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
 import com.skyframework.islandcore.command.IslandCommand;
-import com.skyframework.islandcore.command.debug.IslandDebugCommand;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionService;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionServiceImpl;
+import com.skyframework.islandcore.island.lifecycle.InviteManager;
+import com.skyframework.islandcore.island.lifecycle.InviteManagerImpl;
 import com.skyframework.islandcore.island.registry.IslandRegistryImpl;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
@@ -44,6 +45,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static PermissionProvider PERMISSION_PROVIDER;
 	public static TeleportManager TELEPORT_MANAGER;
 	public static IslandDeletionService DELETION_SERVICE;
+	public static InviteManager INVITE_MANAGER;
 
 	@Override
 	public void onInitialize() {
@@ -53,8 +55,8 @@ public class IslandCoreMod implements ModInitializer {
 
 		ISLAND_REGISTRY = new IslandRegistryImpl();
 		ACCESS_CONTROLLER = new AccessControllerImpl();
+		INVITE_MANAGER = new InviteManagerImpl();
 		ProtectionListeners.register();
-		IslandDebugCommand.register();
 		IslandCommand.register();
 
 		if (FabricLoader.getInstance().isModLoaded("luckperms")) {
