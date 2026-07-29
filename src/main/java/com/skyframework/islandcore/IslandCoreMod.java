@@ -2,7 +2,11 @@ package com.skyframework.islandcore;
 
 import com.skyframework.islandcore.api.permission.PermissionProvider;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
+import com.skyframework.islandcore.command.DimensionCommand;
 import com.skyframework.islandcore.command.IslandCommand;
+import com.skyframework.islandcore.dimension.registry.DimensionRegistry;
+import com.skyframework.islandcore.dimension.registry.DimensionRegistryImpl;
+import com.skyframework.islandcore.dimension.runtime.FantasyDimensionRuntimeProvider;
 import com.skyframework.islandcore.island.biome.BiomeTierRegistry;
 import com.skyframework.islandcore.island.biome.BiomeTierRegistryImpl;
 import com.skyframework.islandcore.island.biome.IslandBiomeApplier;
@@ -54,6 +58,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static BiomeTierRegistry BIOME_TIER_REGISTRY;
 	public static IslandBiomeApplier BIOME_APPLIER;
 	public static IslandEntityTracker ENTITY_TRACKER;
+	public static DimensionRegistry DIMENSION_REGISTRY;
 
 	@Override
 	public void onInitialize() {
@@ -67,8 +72,10 @@ public class IslandCoreMod implements ModInitializer {
 		BIOME_TIER_REGISTRY = new BiomeTierRegistryImpl();
 		BIOME_APPLIER = new IslandBiomeApplier();
 		ENTITY_TRACKER = new IslandEntityTrackerImpl();
+		DIMENSION_REGISTRY = new DimensionRegistryImpl(new FantasyDimensionRuntimeProvider());
 		ProtectionListeners.register();
 		IslandCommand.register();
+		DimensionCommand.register();
 
 		if (FabricLoader.getInstance().isModLoaded("luckperms")) {
 			PERMISSION_PROVIDER = new LuckPermsProvider();

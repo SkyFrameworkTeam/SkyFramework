@@ -13,6 +13,7 @@ repositories {
 	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
 	// for more information about repositories.
 	mavenCentral()
+	maven { url 'https://maven.nucleoid.xyz/' }
 }
 
 loom {
@@ -35,6 +36,11 @@ dependencies {
 	// LuckPerms: external, optional permissions integration. compileOnly so it is
 	// never bundled into our jar — at runtime it's only present if the server has it installed.
 	compileOnly "net.luckperms:api:5.5"
+
+	// Fantasy: runtime dimension creation/persistence library (Dimension Manager, Sprint 16+).
+	// Bundled jar-in-jar via include(...) so server admins don't need to install it separately.
+	modImplementation "xyz.nucleoid:fantasy:0.6.4+1.21"
+	include "xyz.nucleoid:fantasy:0.6.4+1.21"
 }
 
 processResources {
