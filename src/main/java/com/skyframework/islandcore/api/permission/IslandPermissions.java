@@ -59,6 +59,15 @@ public final class IslandPermissions {
 	// Cooldown applied to any player with no cooldown tier node granted at all.
 	public static final long DEFAULT_SPAWN_COOLDOWN_SECONDS = 600L;
 
+	// /farming is also a general server-scope command, not island-specific — same criteria as
+	// RTP_COOLDOWN_*/SPAWN_COOLDOWN_* above. Same pattern: lowest granted <prefix><N> tier wins,
+	// and FARMING_COOLDOWN_BYPASS (sharing this prefix) skips the cooldown entirely.
+	public static final String FARMING_COOLDOWN_NODE_PREFIX = "islandcore.farming.cooldown.";
+	public static final String FARMING_COOLDOWN_BYPASS = "islandcore.farming.cooldown.bypass";
+
+	// Cooldown applied to any player with no cooldown tier node granted at all.
+	public static final long DEFAULT_FARMING_COOLDOWN_SECONDS = 600L;
+
 	private IslandPermissions() {
 	}
 }

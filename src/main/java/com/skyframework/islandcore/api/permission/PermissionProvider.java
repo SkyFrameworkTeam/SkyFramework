@@ -15,4 +15,6 @@ public interface PermissionProvider {
 	long getRtpCooldownSeconds(UUID playerUuid);
 
 	long getSpawnCooldownSeconds(UUID playerUuid);
+
+	long getFarmingCooldownSeconds(UUID playerUuid);
 }

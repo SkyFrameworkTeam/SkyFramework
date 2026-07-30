@@ -8,6 +8,11 @@ import com.skyframework.islandcore.command.IslandCommand;
 import com.skyframework.islandcore.dimension.registry.DimensionRegistry;
 import com.skyframework.islandcore.dimension.registry.DimensionRegistryImpl;
 import com.skyframework.islandcore.dimension.runtime.FantasyDimensionRuntimeProvider;
+import com.skyframework.islandcore.dimension.vanilla.VanillaResetConfig;
+import com.skyframework.islandcore.dimension.vanilla.VanillaResetExecutor;
+import com.skyframework.islandcore.dimension.vanilla.VanillaResetService;
+import com.skyframework.islandcore.farming.FarmingCommand;
+import com.skyframework.islandcore.farming.FarmingConfig;
 import com.skyframework.islandcore.island.biome.BiomeTierRegistry;
 import com.skyframework.islandcore.island.biome.BiomeTierRegistryImpl;
 import com.skyframework.islandcore.island.biome.IslandBiomeApplier;
@@ -73,12 +78,21 @@ public class IslandCoreMod implements ModInitializer {
 	public static RtpConfig RTP_CONFIG;
 	public static SpawnConfig SPAWN_CONFIG;
 	public static PortalLinkConfig PORTAL_LINK_CONFIG;
+	public static VanillaResetConfig VANILLA_RESET_CONFIG;
+	public static VanillaResetService VANILLA_RESET_SERVICE;
+	public static FarmingConfig FARMING_CONFIG;
 
 	@Override
 	public void onInitialize() {
 		// This code runs as soon as Minecraft is in a mod-load-ready state.
 		// However, some things (like resources) may still be uninitialized.
 		// Proceed with mild caution.
+
+		// Must run before anything else: this is the earliest point Fabric guarantees mod code
+		// runs (before server.properties/level.dat are even read this boot — see Sprint 18
+		// research), so it's the only safe moment to apply a vanilla dimension reset requested
+		// during the previous run.
+		VanillaResetExecutor.executeIfPending();
 
 		ISLAND_REGISTRY = new IslandRegistryImpl();
 		ACCESS_CONTROLLER = new AccessControllerImpl();
@@ -91,11 +105,16 @@ public class IslandCoreMod implements ModInitializer {
 		RTP_CONFIG = new RtpConfig();
 		SPAWN_CONFIG = new SpawnConfig();
 		PORTAL_LINK_CONFIG = new PortalLinkConfig();
+		VANILLA_RESET_CONFIG = new VanillaResetConfig();
+		VANILLA_RESET_SERVICE = new VanillaResetService(new VanillaTeleportBackend());
+		ServerTickEvents.END_SERVER_TICK.register(server -> VANILLA_RESET_SERVICE.tickAll());
+		FARMING_CONFIG = new FarmingConfig();
 		ProtectionListeners.register();
 		IslandCommand.register();
 		DimensionCommand.register();
 		RtpCommand.register();
 		SpawnCommand.register();
+		FarmingCommand.register();
 
 		if (FabricLoader.getInstance().isModLoaded("luckperms")) {
 			PERMISSION_PROVIDER = new LuckPermsProvider();
@@ -128,12 +147,17 @@ public class IslandCoreMod implements ModInitializer {
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
 				DamageProtectionListener.isDamageAllowed(entity.getWorld(), entity, source));
 
-		// Welcome teleport for brand-new players only; reconnecting players keep vanilla's normal
-		// "reappear where you left off" behavior. Silently does nothing if the Spawn island hasn't
-		// been created yet (no /island admin spawn create run) — vanilla Overworld spawn is fine then.
+		// Welcome teleport for brand-new players by default; reconnecting players keep vanilla's
+		// normal "reappear where you left off" behavior UNLESS SpawnConfig.alwaysRespawnOnDisconnect
+		// is true, in which case every connection (not just the first) gets teleported, but only the
+		// actual first join ever gets the welcome message. Silently does nothing if the Spawn island
+		// hasn't been created yet (no /island admin spawn create run) — vanilla Overworld spawn is
+		// fine then. isFirstJoin() is called unconditionally: it also records the player as known,
+		// which must happen on every join regardless of the flag below.
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayerEntity player = handler.getPlayer();
-			if (!FIRST_JOIN_TRACKER.isFirstJoin(player.getUuid())) {
+			boolean firstJoin = FIRST_JOIN_TRACKER.isFirstJoin(player.getUuid());
+			if (!firstJoin && !SPAWN_CONFIG.isAlwaysRespawnOnDisconnect()) {
 				return;
 			}
 
@@ -144,7 +168,7 @@ public class IslandCoreMod implements ModInitializer {
 				}
 
 				boolean teleported = new VanillaTeleportBackend().teleport(player, world, spawnIsland.getHomeLocation());
-				if (teleported) {
+				if (teleported && firstJoin) {
 					player.sendMessage(Text.literal("¡Bienvenido a SkyFramework! Usa /island create para crear tu propia isla."), false);
 				}
 			});

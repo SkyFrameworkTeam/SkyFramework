@@ -1,4 +1,4 @@
-package com.skyframework.islandcore.spawn;
+package com.skyframework.islandcore.farming;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -10,22 +10,25 @@ import com.skyframework.islandcore.IslandCoreMod;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
+import net.minecraft.util.Identifier;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-// Loaded from config/islandcore/spawn.json on SERVER_STARTED, same pattern as RtpConfig.
-public class SpawnConfig {
+// Loaded from config/islandcore/farming.json on SERVER_STARTED, same pattern as SpawnConfig.
+public class FarmingConfig {
 
-	private static final String CONFIG_FILE_NAME = "spawn.json";
+	private static final String CONFIG_FILE_NAME = "farming.json";
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	private static final Identifier DEFAULT_TARGET_DIMENSION = Identifier.of("islandcore", "farming");
 
 	private boolean enabled = true;
-	private boolean alwaysRespawnOnDisconnect = false;
+	private Identifier targetDimension = DEFAULT_TARGET_DIMENSION;
 
-	public SpawnConfig() {
+	public FarmingConfig() {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> load());
 	}
 
@@ -38,11 +41,16 @@ public class SpawnConfig {
 
 		try (Reader reader = Files.newBufferedReader(configFile, StandardCharsets.UTF_8)) {
 			JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+
 			if (root.has("enabled")) {
 				enabled = root.get("enabled").getAsBoolean();
 			}
-			if (root.has("alwaysRespawnOnDisconnect")) {
-				alwaysRespawnOnDisconnect = root.get("alwaysRespawnOnDisconnect").getAsBoolean();
+			if (root.has("targetDimension")) {
+				try {
+					targetDimension = Identifier.of(root.get("targetDimension").getAsString());
+				} catch (RuntimeException e) {
+					IslandCoreMod.LOGGER.error("Invalid targetDimension in {}, keeping default", CONFIG_FILE_NAME, e);
+				}
 			}
 		} catch (IOException | RuntimeException e) {
 			IslandCoreMod.LOGGER.error("Failed to load {}, using defaults", CONFIG_FILE_NAME, e);
@@ -52,7 +60,7 @@ public class SpawnConfig {
 	private void writeDefault(Path configFile) {
 		JsonObject root = new JsonObject();
 		root.addProperty("enabled", true);
-		root.addProperty("alwaysRespawnOnDisconnect", false);
+		root.addProperty("targetDimension", DEFAULT_TARGET_DIMENSION.toString());
 
 		try {
 			Files.createDirectories(configFile.getParent());
@@ -66,7 +74,7 @@ public class SpawnConfig {
 		return enabled;
 	}
 
-	public boolean isAlwaysRespawnOnDisconnect() {
-		return alwaysRespawnOnDisconnect;
+	public Identifier getTargetDimension() {
+		return targetDimension;
 	}
 }

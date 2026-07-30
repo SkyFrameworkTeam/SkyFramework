@@ -13,7 +13,8 @@ class PendingTeleport {
 	// Which cooldown map/completion message applies once this finishes (see TeleportManagerImpl).
 	enum Kind {
 		HOME,
-		SPAWN
+		SPAWN,
+		FARMING
 	}
 
 	final UUID playerUuid;

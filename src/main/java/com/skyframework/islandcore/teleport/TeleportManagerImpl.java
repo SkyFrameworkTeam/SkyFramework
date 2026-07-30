@@ -6,12 +6,16 @@ import com.skyframework.islandcore.api.permission.IslandPermissions;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -33,6 +37,8 @@ public class TeleportManagerImpl implements TeleportManager {
 	private final Map<UUID, Instant> lastHomeAt = new HashMap<>();
 	// Independent from lastHomeAt: a player's /island home and /spawn cooldowns run separately.
 	private final Map<UUID, Instant> lastSpawnAt = new HashMap<>();
+	// Independent from the other two: /farming has its own cooldown.
+	private final Map<UUID, Instant> lastFarmingAt = new HashMap<>();
 
 	// onInitialize() runs before the MinecraftServer exists, so the reference is captured lazily on server start.
 	private MinecraftServer server;
@@ -117,6 +123,43 @@ public class TeleportManagerImpl implements TeleportManager {
 	}
 
 	@Override
+	public void requestFarming(ServerPlayerEntity player) {
+		UUID playerUuid = player.getUuid();
+
+		Identifier targetDimensionId = IslandCoreMod.FARMING_CONFIG.getTargetDimension();
+		RegistryKey<World> targetDimension = RegistryKey.of(RegistryKeys.WORLD, targetDimensionId);
+
+		// Resolved (and checked for availability) right away, unlike requestHome/requestSpawn:
+		// their target position comes from the Island model regardless of whether the world is
+		// currently loaded, but the farming destination IS the target world's own spawn point, so
+		// there's nothing to compute without a live world to ask.
+		ServerWorld world = server != null ? server.getWorld(targetDimension) : null;
+		if (world == null) {
+			player.sendMessage(Text.literal("La dimensión de farmeo no está disponible ahora mismo."), false);
+			return;
+		}
+
+		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.FARMING_COOLDOWN_BYPASS)) {
+			Instant last = lastFarmingAt.get(playerUuid);
+			if (last != null) {
+				long cooldownMillis = IslandCoreMod.PERMISSION_PROVIDER.getFarmingCooldownSeconds(playerUuid) * 1000L;
+				long elapsedMillis = Duration.between(last, Instant.now()).toMillis();
+				if (elapsedMillis < cooldownMillis) {
+					long remainingSeconds = (cooldownMillis - elapsedMillis + 999) / 1000;
+					player.sendMessage(Text.literal(
+							"Debes esperar " + remainingSeconds + " segundos más para volver a usar /farming."), false);
+					return;
+				}
+			}
+		}
+
+		pending.put(playerUuid, new PendingTeleport(
+				playerUuid, targetDimension, world.getSpawnPos(), player.getPos(), HOME_WARMUP_TICKS, PendingTeleport.Kind.FARMING));
+
+		player.sendMessage(Text.literal("Preparando teletransporte a la zona de farmeo. No te muevas ni recibas daño."), false);
+	}
+
+	@Override
 	public void tickAll() {
 		if (pending.isEmpty()) {
 			return;
@@ -171,6 +214,9 @@ public class TeleportManagerImpl implements TeleportManager {
 		if (teleport.kind == PendingTeleport.Kind.SPAWN) {
 			lastSpawnAt.put(teleport.playerUuid, Instant.now());
 			player.sendMessage(Text.literal("¡Teletransportado al spawn!"), false);
+		} else if (teleport.kind == PendingTeleport.Kind.FARMING) {
+			lastFarmingAt.put(teleport.playerUuid, Instant.now());
+			player.sendMessage(Text.literal("¡Teletransportado a la zona de farmeo!"), false);
 		} else {
 			lastHomeAt.put(teleport.playerUuid, Instant.now());
 			player.sendMessage(Text.literal("¡Teletransportado a tu isla!"), false);

@@ -1,4 +1,4 @@
-package com.skyframework.islandcore.spawn;
+package com.skyframework.islandcore.dimension.vanilla;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -15,17 +15,22 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 
-// Loaded from config/islandcore/spawn.json on SERVER_STARTED, same pattern as RtpConfig.
-public class SpawnConfig {
+// Loaded from config/islandcore/vanilla_reset.json on SERVER_STARTED, same pattern as RtpConfig.
+//
+// "seedMode" controls what VanillaResetService.confirmReset() does when the admin doesn't give an
+// explicit seed:
+//  - "new" (default, and the fallback for any unrecognized/missing value): roll a fresh random seed.
+//  - "keep": leave the seed untouched (persist seed=null, meaning "don't rewrite level.dat's seed").
+public class VanillaResetConfig {
 
-	private static final String CONFIG_FILE_NAME = "spawn.json";
+	private static final String CONFIG_FILE_NAME = "vanilla_reset.json";
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-	private boolean enabled = true;
-	private boolean alwaysRespawnOnDisconnect = false;
+	private String seedMode = "new";
 
-	public SpawnConfig() {
+	public VanillaResetConfig() {
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> load());
 	}
 
@@ -38,11 +43,15 @@ public class SpawnConfig {
 
 		try (Reader reader = Files.newBufferedReader(configFile, StandardCharsets.UTF_8)) {
 			JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-			if (root.has("enabled")) {
-				enabled = root.get("enabled").getAsBoolean();
-			}
-			if (root.has("alwaysRespawnOnDisconnect")) {
-				alwaysRespawnOnDisconnect = root.get("alwaysRespawnOnDisconnect").getAsBoolean();
+
+			if (root.has("seedMode")) {
+				String mode = root.get("seedMode").getAsString().toLowerCase(Locale.ROOT);
+				if (mode.equals("new") || mode.equals("keep")) {
+					seedMode = mode;
+				} else {
+					IslandCoreMod.LOGGER.warn("Unrecognized seedMode \"{}\" in {}, defaulting to \"new\"", mode, CONFIG_FILE_NAME);
+					seedMode = "new";
+				}
 			}
 		} catch (IOException | RuntimeException e) {
 			IslandCoreMod.LOGGER.error("Failed to load {}, using defaults", CONFIG_FILE_NAME, e);
@@ -51,8 +60,7 @@ public class SpawnConfig {
 
 	private void writeDefault(Path configFile) {
 		JsonObject root = new JsonObject();
-		root.addProperty("enabled", true);
-		root.addProperty("alwaysRespawnOnDisconnect", false);
+		root.addProperty("seedMode", "new");
 
 		try {
 			Files.createDirectories(configFile.getParent());
@@ -62,11 +70,7 @@ public class SpawnConfig {
 		}
 	}
 
-	public boolean isEnabled() {
-		return enabled;
-	}
-
-	public boolean isAlwaysRespawnOnDisconnect() {
-		return alwaysRespawnOnDisconnect;
+	public String getSeedMode() {
+		return seedMode;
 	}
 }
