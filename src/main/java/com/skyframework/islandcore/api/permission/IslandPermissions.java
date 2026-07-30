@@ -40,6 +40,25 @@ public final class IslandPermissions {
 	// Cooldown applied to any player with no cooldown tier node granted at all: 7 days.
 	public static final long DEFAULT_BIOME_COOLDOWN_SECONDS = 604800L;
 
+	// /rtp is a general server-scope command, not island-specific — it lives in this class only
+	// because this is the shared permission-node registry, same criteria already applied above to
+	// the teleport/biome cooldown nodes. Same pattern: lowest granted <prefix><N> tier wins, and
+	// RTP_COOLDOWN_BYPASS (sharing this prefix) skips the cooldown entirely.
+	public static final String RTP_COOLDOWN_NODE_PREFIX = "islandcore.rtp.cooldown.";
+	public static final String RTP_COOLDOWN_BYPASS = "islandcore.rtp.cooldown.bypass";
+
+	// Cooldown applied to any player with no cooldown tier node granted at all.
+	public static final long DEFAULT_RTP_COOLDOWN_SECONDS = 600L;
+
+	// /spawn is also a general server-scope command, not island-specific — same criteria as
+	// RTP_COOLDOWN_* above. Same pattern: lowest granted <prefix><N> tier wins, and
+	// SPAWN_COOLDOWN_BYPASS (sharing this prefix) skips the cooldown entirely.
+	public static final String SPAWN_COOLDOWN_NODE_PREFIX = "islandcore.spawn.cooldown.";
+	public static final String SPAWN_COOLDOWN_BYPASS = "islandcore.spawn.cooldown.bypass";
+
+	// Cooldown applied to any player with no cooldown tier node granted at all.
+	public static final long DEFAULT_SPAWN_COOLDOWN_SECONDS = 600L;
+
 	private IslandPermissions() {
 	}
 }

@@ -31,6 +31,8 @@ public class TeleportManagerImpl implements TeleportManager {
 	private final TeleportBackend backend;
 	private final Map<UUID, PendingTeleport> pending = new HashMap<>();
 	private final Map<UUID, Instant> lastHomeAt = new HashMap<>();
+	// Independent from lastHomeAt: a player's /island home and /spawn cooldowns run separately.
+	private final Map<UUID, Instant> lastSpawnAt = new HashMap<>();
 
 	// onInitialize() runs before the MinecraftServer exists, so the reference is captured lazily on server start.
 	private MinecraftServer server;
@@ -73,11 +75,45 @@ public class TeleportManagerImpl implements TeleportManager {
 			}
 		}
 
-		pending.put(playerUuid, new PendingTeleport(playerUuid, island.getDimension(), home, player.getPos(), HOME_WARMUP_TICKS));
+		pending.put(playerUuid, new PendingTeleport(
+				playerUuid, island.getDimension(), home, player.getPos(), HOME_WARMUP_TICKS, PendingTeleport.Kind.HOME));
 
 		// Neutral confirmation only: the green countdown numbers (below, in tickAll) carry the
 		// actual "X seconds left" information, starting almost immediately after this.
 		player.sendMessage(Text.literal("Preparando teletransporte a tu isla. No te muevas ni recibas daño."), false);
+	}
+
+	@Override
+	public void requestSpawn(ServerPlayerEntity player) {
+		UUID playerUuid = player.getUuid();
+
+		Optional<Island> maybeSpawnIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeSpawnIsland.isEmpty()) {
+			player.sendMessage(Text.literal("La isla de Spawn todavía no existe."), false);
+			return;
+		}
+
+		Island spawnIsland = maybeSpawnIsland.get();
+		BlockPos home = spawnIsland.getHomeLocation();
+
+		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.SPAWN_COOLDOWN_BYPASS)) {
+			Instant last = lastSpawnAt.get(playerUuid);
+			if (last != null) {
+				long cooldownMillis = IslandCoreMod.PERMISSION_PROVIDER.getSpawnCooldownSeconds(playerUuid) * 1000L;
+				long elapsedMillis = Duration.between(last, Instant.now()).toMillis();
+				if (elapsedMillis < cooldownMillis) {
+					long remainingSeconds = (cooldownMillis - elapsedMillis + 999) / 1000;
+					player.sendMessage(Text.literal(
+							"Debes esperar " + remainingSeconds + " segundos más para volver a usar /spawn."), false);
+					return;
+				}
+			}
+		}
+
+		pending.put(playerUuid, new PendingTeleport(
+				playerUuid, spawnIsland.getDimension(), home, player.getPos(), HOME_WARMUP_TICKS, PendingTeleport.Kind.SPAWN));
+
+		player.sendMessage(Text.literal("Preparando teletransporte al spawn. No te muevas ni recibas daño."), false);
 	}
 
 	@Override
@@ -127,11 +163,17 @@ public class TeleportManagerImpl implements TeleportManager {
 		}
 
 		boolean success = backend.teleport(player, world, teleport.targetPos);
-		if (success) {
+		if (!success) {
+			player.sendMessage(Text.literal("No se ha podido completar el teletransporte."), false);
+			return;
+		}
+
+		if (teleport.kind == PendingTeleport.Kind.SPAWN) {
+			lastSpawnAt.put(teleport.playerUuid, Instant.now());
+			player.sendMessage(Text.literal("¡Teletransportado al spawn!"), false);
+		} else {
 			lastHomeAt.put(teleport.playerUuid, Instant.now());
 			player.sendMessage(Text.literal("¡Teletransportado a tu isla!"), false);
-		} else {
-			player.sendMessage(Text.literal("No se ha podido completar el teletransporte."), false);
 		}
 	}
 

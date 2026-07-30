@@ -119,7 +119,9 @@ public class IslandCommand {
 														.executes(IslandCommand::executeAdminSpawnCreate)))
 										.then(CommandManager.literal("resize")
 												.then(CommandManager.argument("size", IntegerArgumentType.integer(1))
-														.executes(IslandCommand::executeAdminSpawnResize))))
+														.executes(IslandCommand::executeAdminSpawnResize)))
+										.then(CommandManager.literal("sethome")
+												.executes(IslandCommand::executeAdminSpawnSetHome)))
 								.then(CommandManager.literal("list")
 										.executes(IslandCommand::executeAdminListAll)
 										.then(CommandManager.argument("player", EntityArgumentType.player())
@@ -672,6 +674,34 @@ public class IslandCommand {
 		}
 
 		source.sendFeedback(() -> Text.literal("Isla de Spawn ampliada a tamaño " + newSize + "."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminSpawnSetHome(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("La isla de Spawn todavía no existe. Usa /island admin spawn create primero."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		boolean inIslandsDimension = player.getWorld().getRegistryKey().equals(ISLANDS_DIMENSION);
+		boolean withinBuiltIsland = island.getBounds().contains(player.getBlockPos());
+
+		if (!inIslandsDimension || !withinBuiltIsland) {
+			source.sendError(Text.literal("El home de la isla de Spawn debe fijarse dentro de la parte ya construida de esa isla."));
+			return 0;
+		}
+
+		BlockPos pos = player.getBlockPos();
+		IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(island.getIslandId(), pos);
+
+		source.sendFeedback(() -> Text.literal("Home de la isla de Spawn actualizado a ("
+				+ pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")."), false);
 
 		return 1;
 	}

@@ -137,6 +137,82 @@ public class LuckPermsProvider implements PermissionProvider {
 		return lowest;
 	}
 
+	@Override
+	public long getRtpCooldownSeconds(UUID playerUuid) {
+		User user = resolveUser(playerUuid);
+		if (user == null) {
+			return IslandPermissions.DEFAULT_RTP_COOLDOWN_SECONDS;
+		}
+
+		Map<String, Boolean> permissions = user.getCachedData().getPermissionData().getPermissionMap();
+
+		long lowest = IslandPermissions.DEFAULT_RTP_COOLDOWN_SECONDS;
+		boolean found = false;
+
+		for (Map.Entry<String, Boolean> entry : permissions.entrySet()) {
+			if (!entry.getValue()) {
+				continue;
+			}
+
+			String node = entry.getKey();
+			if (!node.startsWith(IslandPermissions.RTP_COOLDOWN_NODE_PREFIX)) {
+				continue;
+			}
+
+			String suffix = node.substring(IslandPermissions.RTP_COOLDOWN_NODE_PREFIX.length());
+			try {
+				long seconds = Long.parseLong(suffix);
+				if (!found || seconds < lowest) {
+					lowest = seconds;
+					found = true;
+				}
+			} catch (NumberFormatException e) {
+				// Malformed node (doesn't end in a valid integer, e.g. the "bypass" node
+				// which shares this prefix): ignore silently.
+			}
+		}
+
+		return lowest;
+	}
+
+	@Override
+	public long getSpawnCooldownSeconds(UUID playerUuid) {
+		User user = resolveUser(playerUuid);
+		if (user == null) {
+			return IslandPermissions.DEFAULT_SPAWN_COOLDOWN_SECONDS;
+		}
+
+		Map<String, Boolean> permissions = user.getCachedData().getPermissionData().getPermissionMap();
+
+		long lowest = IslandPermissions.DEFAULT_SPAWN_COOLDOWN_SECONDS;
+		boolean found = false;
+
+		for (Map.Entry<String, Boolean> entry : permissions.entrySet()) {
+			if (!entry.getValue()) {
+				continue;
+			}
+
+			String node = entry.getKey();
+			if (!node.startsWith(IslandPermissions.SPAWN_COOLDOWN_NODE_PREFIX)) {
+				continue;
+			}
+
+			String suffix = node.substring(IslandPermissions.SPAWN_COOLDOWN_NODE_PREFIX.length());
+			try {
+				long seconds = Long.parseLong(suffix);
+				if (!found || seconds < lowest) {
+					lowest = seconds;
+					found = true;
+				}
+			} catch (NumberFormatException e) {
+				// Malformed node (doesn't end in a valid integer, e.g. the "bypass" node
+				// which shares this prefix): ignore silently.
+			}
+		}
+
+		return lowest;
+	}
+
 	private User resolveUser(UUID playerUuid) {
 		// Resolved lazily (not cached at construction/mod-init time): Fabric doesn't guarantee
 		// that LuckPerms has finished its own initialization before ours runs, and

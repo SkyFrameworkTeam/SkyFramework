@@ -1,5 +1,6 @@
 package com.skyframework.islandcore;
 
+import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.permission.PermissionProvider;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
 import com.skyframework.islandcore.command.DimensionCommand;
@@ -19,10 +20,15 @@ import com.skyframework.islandcore.island.lifecycle.InviteManagerImpl;
 import com.skyframework.islandcore.island.registry.IslandRegistryImpl;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
+import com.skyframework.islandcore.player.FirstJoinTracker;
 import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
 import com.skyframework.islandcore.protection.DamageProtectionListener;
 import com.skyframework.islandcore.protection.ProtectionListeners;
+import com.skyframework.islandcore.rtp.RtpCommand;
+import com.skyframework.islandcore.rtp.RtpConfig;
+import com.skyframework.islandcore.spawn.SpawnCommand;
+import com.skyframework.islandcore.spawn.SpawnConfig;
 import com.skyframework.islandcore.teleport.TeleportManager;
 import com.skyframework.islandcore.teleport.TeleportManagerImpl;
 import com.skyframework.islandcore.teleport.VanillaTeleportBackend;
@@ -31,9 +37,12 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
 import org.slf4j.Logger;
@@ -59,6 +68,9 @@ public class IslandCoreMod implements ModInitializer {
 	public static IslandBiomeApplier BIOME_APPLIER;
 	public static IslandEntityTracker ENTITY_TRACKER;
 	public static DimensionRegistry DIMENSION_REGISTRY;
+	public static FirstJoinTracker FIRST_JOIN_TRACKER;
+	public static RtpConfig RTP_CONFIG;
+	public static SpawnConfig SPAWN_CONFIG;
 
 	@Override
 	public void onInitialize() {
@@ -72,10 +84,15 @@ public class IslandCoreMod implements ModInitializer {
 		BIOME_TIER_REGISTRY = new BiomeTierRegistryImpl();
 		BIOME_APPLIER = new IslandBiomeApplier();
 		ENTITY_TRACKER = new IslandEntityTrackerImpl();
-		DIMENSION_REGISTRY = new DimensionRegistryImpl(new FantasyDimensionRuntimeProvider());
+		DIMENSION_REGISTRY = new DimensionRegistryImpl(new FantasyDimensionRuntimeProvider(), new VanillaTeleportBackend());
+		FIRST_JOIN_TRACKER = new FirstJoinTracker();
+		RTP_CONFIG = new RtpConfig();
+		SPAWN_CONFIG = new SpawnConfig();
 		ProtectionListeners.register();
 		IslandCommand.register();
 		DimensionCommand.register();
+		RtpCommand.register();
+		SpawnCommand.register();
 
 		if (FabricLoader.getInstance().isModLoaded("luckperms")) {
 			PERMISSION_PROVIDER = new LuckPermsProvider();
@@ -107,6 +124,28 @@ public class IslandCoreMod implements ModInitializer {
 		// be merged with the teleport-cancellation listener above.
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
 				DamageProtectionListener.isDamageAllowed(entity.getWorld(), entity, source));
+
+		// Welcome teleport for brand-new players only; reconnecting players keep vanilla's normal
+		// "reappear where you left off" behavior. Silently does nothing if the Spawn island hasn't
+		// been created yet (no /island admin spawn create run) — vanilla Overworld spawn is fine then.
+		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+			ServerPlayerEntity player = handler.getPlayer();
+			if (!FIRST_JOIN_TRACKER.isFirstJoin(player.getUuid())) {
+				return;
+			}
+
+			ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID).ifPresent(spawnIsland -> {
+				ServerWorld world = server.getWorld(spawnIsland.getDimension());
+				if (world == null) {
+					return;
+				}
+
+				boolean teleported = new VanillaTeleportBackend().teleport(player, world, spawnIsland.getHomeLocation());
+				if (teleported) {
+					player.sendMessage(Text.literal("¡Bienvenido a SkyFramework! Usa /island create para crear tu propia isla."), false);
+				}
+			});
+		});
 
 		LOGGER.info("Hello Fabric world!");
 	}

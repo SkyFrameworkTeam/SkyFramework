@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandSource;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
@@ -51,6 +52,20 @@ public class DimensionCommand {
 								.then(CommandManager.argument("id", StringArgumentType.word())
 										.suggests(DimensionCommand::suggestExistingIds)
 										.executes(DimensionCommand::executeInfo)))
+						.then(CommandManager.literal("delete")
+								.then(CommandManager.argument("id", StringArgumentType.word())
+										.suggests(DimensionCommand::suggestExistingIds)
+										.executes(DimensionCommand::executeDelete)
+										.then(CommandManager.literal("confirm")
+												.executes(DimensionCommand::executeDeleteConfirm))))
+						.then(CommandManager.literal("regenerate")
+								.then(CommandManager.argument("id", StringArgumentType.word())
+										.suggests(DimensionCommand::suggestExistingIds)
+										.executes(ctx -> executeRegenerate(ctx, null))
+										.then(CommandManager.argument("seed", LongArgumentType.longArg())
+												.executes(ctx -> executeRegenerate(ctx, LongArgumentType.getLong(ctx, "seed"))))
+										.then(CommandManager.literal("confirm")
+												.executes(DimensionCommand::executeRegenerateConfirm))))
 				)
 		);
 	}
@@ -135,6 +150,78 @@ public class DimensionCommand {
 		source.sendFeedback(() -> Text.literal("state=" + dimension.getState()), false);
 		source.sendFeedback(() -> Text.literal("createdAt=" + dimension.getCreatedAt()), false);
 		source.sendFeedback(() -> Text.literal("updatedAt=" + dimension.getUpdatedAt()), false);
+
+		return 1;
+	}
+
+	private static int executeDelete(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		Identifier id = Identifier.of("islandcore", StringArgumentType.getString(ctx, "id"));
+
+		try {
+			IslandCoreMod.DIMENSION_REGISTRY.requestDeletion(id, player.getUuid());
+		} catch (IllegalArgumentException | IllegalStateException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("¿Seguro que quieres borrar la dimensión " + id
+				+ "? Esta acción no se puede deshacer. Usa /dimension delete " + id.getPath()
+				+ " confirm en los próximos 30 segundos para confirmar."), false);
+
+		return 1;
+	}
+
+	private static int executeDeleteConfirm(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		Identifier id = Identifier.of("islandcore", StringArgumentType.getString(ctx, "id"));
+
+		boolean confirmed = IslandCoreMod.DIMENSION_REGISTRY.confirmDeletion(id, player.getUuid());
+		if (!confirmed) {
+			source.sendError(Text.literal("No hay ninguna solicitud de borrado pendiente para " + id + " (o ha expirado)."));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("La dimensión " + id + " se está borrando..."), false);
+
+		return 1;
+	}
+
+	private static int executeRegenerate(CommandContext<ServerCommandSource> ctx, Long explicitSeed) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		Identifier id = Identifier.of("islandcore", StringArgumentType.getString(ctx, "id"));
+
+		long newSeed = explicitSeed != null ? explicitSeed : new Random().nextLong();
+
+		try {
+			IslandCoreMod.DIMENSION_REGISTRY.requestRegeneration(id, player.getUuid(), newSeed);
+		} catch (IllegalArgumentException | IllegalStateException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("¿Seguro que quieres regenerar la dimensión " + id
+				+ " con la semilla " + newSeed + "? Todo lo construido en ella se perderá. Usa /dimension regenerate "
+				+ id.getPath() + " confirm en los próximos 30 segundos para confirmar."), false);
+
+		return 1;
+	}
+
+	private static int executeRegenerateConfirm(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		Identifier id = Identifier.of("islandcore", StringArgumentType.getString(ctx, "id"));
+
+		boolean confirmed = IslandCoreMod.DIMENSION_REGISTRY.confirmRegeneration(id, player.getUuid());
+		if (!confirmed) {
+			source.sendError(Text.literal("No hay ninguna solicitud de regeneración pendiente para " + id + " (o ha expirado)."));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("La dimensión " + id + " se está regenerando..."), false);
 
 		return 1;
 	}

@@ -31,4 +31,14 @@ public class FallbackPermissionProvider implements PermissionProvider {
 	public long getBiomeCooldownSeconds(UUID playerUuid) {
 		return IslandPermissions.DEFAULT_BIOME_COOLDOWN_SECONDS;
 	}
+
+	@Override
+	public long getRtpCooldownSeconds(UUID playerUuid) {
+		return IslandPermissions.DEFAULT_RTP_COOLDOWN_SECONDS;
+	}
+
+	@Override
+	public long getSpawnCooldownSeconds(UUID playerUuid) {
+		return IslandPermissions.DEFAULT_SPAWN_COOLDOWN_SECONDS;
+	}
 }

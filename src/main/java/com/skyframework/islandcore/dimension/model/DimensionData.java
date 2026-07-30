@@ -10,7 +10,7 @@ public class DimensionData implements DimensionDefinition {
 	private final Identifier id;
 	private final String displayName;
 	private final DimensionGeneratorStyle generatorStyle;
-	private final long seed;
+	private long seed;
 	private DimensionState state;
 
 	private final Instant createdAt;
@@ -52,6 +52,13 @@ public class DimensionData implements DimensionDefinition {
 	@Override
 	public long getSeed() {
 		return seed;
+	}
+
+	// Only ever set once a regenerate has actually completed (see DimensionRegistryImpl) — so a
+	// crash mid-regenerate always leaves the previously-persisted seed intact, never a half-applied one.
+	public void setSeed(long seed) {
+		this.seed = seed;
+		touch();
 	}
 
 	@Override

@@ -11,4 +11,8 @@ public interface PermissionProvider {
 	int getHomeCooldownSeconds(UUID playerUuid);
 
 	long getBiomeCooldownSeconds(UUID playerUuid);
+
+	long getRtpCooldownSeconds(UUID playerUuid);
+
+	long getSpawnCooldownSeconds(UUID playerUuid);
 }
