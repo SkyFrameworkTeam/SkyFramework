@@ -21,6 +21,7 @@ import com.skyframework.islandcore.island.registry.IslandRegistryImpl;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
 import com.skyframework.islandcore.player.FirstJoinTracker;
+import com.skyframework.islandcore.portal.PortalLinkConfig;
 import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
 import com.skyframework.islandcore.protection.DamageProtectionListener;
@@ -71,6 +72,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static FirstJoinTracker FIRST_JOIN_TRACKER;
 	public static RtpConfig RTP_CONFIG;
 	public static SpawnConfig SPAWN_CONFIG;
+	public static PortalLinkConfig PORTAL_LINK_CONFIG;
 
 	@Override
 	public void onInitialize() {
@@ -88,6 +90,7 @@ public class IslandCoreMod implements ModInitializer {
 		FIRST_JOIN_TRACKER = new FirstJoinTracker();
 		RTP_CONFIG = new RtpConfig();
 		SPAWN_CONFIG = new SpawnConfig();
+		PORTAL_LINK_CONFIG = new PortalLinkConfig();
 		ProtectionListeners.register();
 		IslandCommand.register();
 		DimensionCommand.register();
