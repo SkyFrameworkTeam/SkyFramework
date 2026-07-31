@@ -10,6 +10,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -36,7 +37,8 @@ public class InviteManagerImpl implements InviteManager {
 			throw new IllegalArgumentException("Ese jugador ya es miembro de tu isla.");
 		}
 
-		pendingInvites.put(inviteeUuid, new PendingInvite(islandId, invitedByUuid, Instant.now().plus(INVITE_TIMEOUT)));
+		pendingInvites.put(inviteeUuid,
+				new PendingInvite(islandId, invitedByUuid, inviteeUuid, Instant.now().plus(INVITE_TIMEOUT)));
 	}
 
 	@Override
@@ -66,6 +68,20 @@ public class InviteManagerImpl implements InviteManager {
 		return Optional.of(island);
 	}
 
-	private record PendingInvite(UUID islandId, UUID invitedByUuid, Instant expiresAt) {
+	@Override
+	public Optional<PendingInvite> getPendingInvite(UUID invitedUuid) {
+		PendingInvite invite = pendingInvites.get(invitedUuid);
+		if (invite == null || Instant.now().isAfter(invite.expiresAt())) {
+			return Optional.empty();
+		}
+		return Optional.of(invite);
+	}
+
+	@Override
+	public List<PendingInvite> getPendingInvitesForIsland(UUID islandId) {
+		Instant now = Instant.now();
+		return pendingInvites.values().stream()
+				.filter(invite -> invite.islandId().equals(islandId) && now.isBefore(invite.expiresAt()))
+				.toList();
 	}
 }

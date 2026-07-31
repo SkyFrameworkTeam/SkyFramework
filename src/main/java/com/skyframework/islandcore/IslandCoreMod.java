@@ -23,6 +23,8 @@ import com.skyframework.islandcore.island.lifecycle.IslandDeletionServiceImpl;
 import com.skyframework.islandcore.island.lifecycle.InviteManager;
 import com.skyframework.islandcore.island.lifecycle.InviteManagerImpl;
 import com.skyframework.islandcore.island.registry.IslandRegistryImpl;
+import com.skyframework.islandcore.net.ClientSyncNotifier;
+import com.skyframework.islandcore.net.ServerPacketHandlers;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
 import com.skyframework.islandcore.player.FirstJoinTracker;
@@ -115,6 +117,9 @@ public class IslandCoreMod implements ModInitializer {
 		RtpCommand.register();
 		SpawnCommand.register();
 		FarmingCommand.register();
+
+		ServerPacketHandlers.register();
+		ClientSyncNotifier.register();
 
 		if (FabricLoader.getInstance().isModLoaded("luckperms")) {
 			PERMISSION_PROVIDER = new LuckPermsProvider();
