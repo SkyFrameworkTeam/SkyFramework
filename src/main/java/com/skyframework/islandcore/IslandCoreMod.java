@@ -29,6 +29,8 @@ import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
 import com.skyframework.islandcore.player.FirstJoinTracker;
 import com.skyframework.islandcore.player.StarterKitConfig;
+import com.skyframework.islandcore.player.rescue.VoidRescueConfig;
+import com.skyframework.islandcore.player.rescue.VoidRescueListener;
 import com.skyframework.islandcore.portal.PortalLinkConfig;
 import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
@@ -84,6 +86,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static DimensionRegistry DIMENSION_REGISTRY;
 	public static FirstJoinTracker FIRST_JOIN_TRACKER;
 	public static StarterKitConfig STARTER_KIT_CONFIG;
+	public static VoidRescueConfig VOID_RESCUE_CONFIG;
 	public static RtpConfig RTP_CONFIG;
 	public static SpawnConfig SPAWN_CONFIG;
 	public static PortalLinkConfig PORTAL_LINK_CONFIG;
@@ -112,6 +115,7 @@ public class IslandCoreMod implements ModInitializer {
 		DIMENSION_REGISTRY = new DimensionRegistryImpl(new FantasyDimensionRuntimeProvider(), new VanillaTeleportBackend());
 		FIRST_JOIN_TRACKER = new FirstJoinTracker();
 		STARTER_KIT_CONFIG = new StarterKitConfig();
+		VOID_RESCUE_CONFIG = new VoidRescueConfig();
 		RTP_CONFIG = new RtpConfig();
 		SPAWN_CONFIG = new SpawnConfig();
 		PORTAL_LINK_CONFIG = new PortalLinkConfig();
@@ -159,6 +163,11 @@ public class IslandCoreMod implements ModInitializer {
 		// be merged with the teleport-cancellation listener above.
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
 				DamageProtectionListener.isDamageAllowed(entity.getWorld(), entity, source));
+		// A third, independent listener: emergency void-rescue teleport, unrelated to the
+		// protection rules above (which only ever look at attacker permissions/settings, not the
+		// no-attacker fall-out-of-world case this handles).
+		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
+				VoidRescueListener.isDamageAllowed(entity, source));
 
 		// Welcome teleport for brand-new players by default; reconnecting players keep vanilla's
 		// normal "reappear where you left off" behavior UNLESS SpawnConfig.alwaysRespawnOnDisconnect
