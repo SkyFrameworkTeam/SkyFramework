@@ -100,6 +100,18 @@ public class TeleportManagerImpl implements TeleportManager {
 					"Tu home estaba fuera de los límites actuales de tu isla; se ha reajustado al centro."), false);
 		}
 
+		// Homes set before SafeLandingChecker existed (via /island sethome without validation) may
+		// not have solid ground underneath anymore. Auto-correct to the center rather than send the
+		// player through a warmup only to drop them into a fresh fall on arrival.
+		ServerWorld homeWorld = server != null ? server.getWorld(island.getDimension()) : null;
+		if (homeWorld != null && !SafeLandingChecker.isSafe(homeWorld, home)) {
+			BlockPos center = island.getCenter();
+			IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(island.getIslandId(), center);
+			home = center;
+			player.sendMessage(Text.literal(
+					"Tu home no tenía suelo seguro debajo; se ha reajustado al centro de tu isla."), false);
+		}
+
 		pending.put(playerUuid, new PendingTeleport(
 				playerUuid, island.getDimension(), home, player.getPos(), HOME_WARMUP_TICKS, PendingTeleport.Kind.HOME));
 

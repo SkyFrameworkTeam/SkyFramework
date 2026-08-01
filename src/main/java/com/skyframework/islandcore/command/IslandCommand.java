@@ -18,6 +18,7 @@ import com.skyframework.islandcore.api.permission.IslandPermissions;
 import com.skyframework.islandcore.island.lifecycle.IslandActionService;
 import com.skyframework.islandcore.island.lifecycle.MembershipService;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.teleport.SafeLandingChecker;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
@@ -229,6 +230,12 @@ public class IslandCommand {
 
 		if (!inIslandsDimension || !withinBuiltIsland) {
 			source.sendError(Text.literal("El home debe fijarse dentro de la parte ya construida de tu isla."));
+			return 0;
+		}
+
+		if (!SafeLandingChecker.isSafe(player.getServerWorld(), player.getBlockPos())) {
+			source.sendError(Text.literal(
+					"No puedes fijar el home aquí, no hay suelo seguro debajo. Colócate sobre un bloque sólido."));
 			return 0;
 		}
 
