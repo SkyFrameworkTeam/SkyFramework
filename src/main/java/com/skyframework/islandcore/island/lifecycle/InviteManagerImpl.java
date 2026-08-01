@@ -3,6 +3,8 @@ package com.skyframework.islandcore.island.lifecycle;
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandPermission;
+import com.skyframework.islandcore.api.network.ActionOutcome;
+import com.skyframework.islandcore.api.network.ActionReason;
 import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
 
@@ -24,21 +26,27 @@ public class InviteManagerImpl implements InviteManager {
 	private final Map<UUID, PendingInvite> pendingInvites = new HashMap<>();
 
 	@Override
-	public void invite(UUID islandId, UUID invitedByUuid, UUID inviteeUuid) {
-		Island island = IslandCoreMod.ISLAND_REGISTRY.getIsland(islandId)
-				.orElseThrow(() -> new IllegalArgumentException("No existe ninguna isla con id: " + islandId));
+	public ActionOutcome<Void> invite(UUID islandId, UUID invitedByUuid, UUID inviteeUuid) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIsland(islandId);
+		if (maybeIsland.isEmpty()) {
+			// Callers always resolve islandId from the inviter's own island right before this
+			// call, so this shouldn't normally happen; treated the same as "no island" defensively.
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+		Island island = maybeIsland.get();
 
 		if (island.getOwnerUuid().equals(inviteeUuid)) {
-			throw new IllegalArgumentException("Ya eres el propietario de esta isla.");
+			return ActionOutcome.fail(ActionReason.ALREADY_OWNER);
 		}
 
 		IslandRole existingRole = island.getRoleOf(inviteeUuid);
 		if (existingRole == IslandRole.MEMBER || existingRole == IslandRole.TRUSTED) {
-			throw new IllegalArgumentException("Ese jugador ya es miembro de tu isla.");
+			return ActionOutcome.fail(ActionReason.ALREADY_MEMBER);
 		}
 
 		pendingInvites.put(inviteeUuid,
 				new PendingInvite(islandId, invitedByUuid, inviteeUuid, Instant.now().plus(INVITE_TIMEOUT)));
+		return ActionOutcome.ok();
 	}
 
 	@Override

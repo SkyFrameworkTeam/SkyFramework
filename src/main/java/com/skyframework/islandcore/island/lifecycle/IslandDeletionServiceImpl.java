@@ -117,6 +117,15 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 	}
 
 	@Override
+	public Optional<Long> getPendingDeletionRemainingSeconds(UUID islandId) {
+		PendingRequest request = pendingRequests.get(islandId);
+		if (request == null || Instant.now().isAfter(request.expiresAt)) {
+			return Optional.empty();
+		}
+		return Optional.of(Duration.between(Instant.now(), request.expiresAt).getSeconds());
+	}
+
+	@Override
 	public void tickAll() {
 		tickPendingRequests();
 		tickBlockClearing();

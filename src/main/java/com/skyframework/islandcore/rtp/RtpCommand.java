@@ -4,37 +4,25 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import com.skyframework.islandcore.IslandCoreMod;
-import com.skyframework.islandcore.api.permission.IslandPermissions;
-import com.skyframework.islandcore.teleport.TeleportBackend;
-import com.skyframework.islandcore.teleport.VanillaTeleportBackend;
+import com.skyframework.islandcore.api.network.ActionOutcome;
+import com.skyframework.islandcore.api.network.ActionReason;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
 
 import java.time.Duration;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
 
 // "/rtp", open to every player (no OP required).
 //
-// The per-player cooldown below is kept in memory only, never persisted to disk: a server
-// restart resets everyone's /rtp cooldown. That's acceptable here — unlike /island home there's
-// no per-destination state to protect, just rate-limiting a "send me somewhere safe" button.
+// The actual cooldown/safe-spot/teleport logic now lives in TeleportManager#requestRtp (moved
+// there this sprint so the future network packet handler can reuse it without a second, possibly
+// diverging cooldown tracker) — this class only formats the exact same chat messages as before
+// from the returned ActionOutcome.
 public class RtpCommand {
-
-	private static final SafeRandomTeleportFinder FINDER = new SafeRandomTeleportFinder();
-	private static final TeleportBackend TELEPORT_BACKEND = new VanillaTeleportBackend();
-
-	private static final Map<UUID, Instant> lastRtpAt = new HashMap<>();
 
 	private RtpCommand() {
 	}
@@ -49,41 +37,24 @@ public class RtpCommand {
 	private static int executeRtp(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
 		ServerCommandSource source = ctx.getSource();
 		ServerPlayerEntity player = source.getPlayerOrThrow();
-		UUID playerUuid = player.getUuid();
-		ServerWorld world = player.getServerWorld();
 
-		if (!IslandCoreMod.RTP_CONFIG.isEnabled()) {
-			source.sendError(Text.literal("El comando /rtp está desactivado en este servidor."));
-			return 0;
-		}
-
-		if (!IslandCoreMod.RTP_CONFIG.isAllowed(world.getRegistryKey().getValue())) {
-			source.sendError(Text.literal("No puedes usar /rtp en esta dimensión."));
-			return 0;
-		}
-
-		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.RTP_COOLDOWN_BYPASS)) {
-			Instant last = lastRtpAt.get(playerUuid);
-			if (last != null) {
-				long cooldownSeconds = IslandCoreMod.PERMISSION_PROVIDER.getRtpCooldownSeconds(playerUuid);
-				Instant availableAt = last.plusSeconds(cooldownSeconds);
-				if (Instant.now().isBefore(availableAt)) {
-					String remaining = formatDuration(Duration.between(Instant.now(), availableAt));
+		ActionOutcome<Long> outcome = IslandCoreMod.TELEPORT_MANAGER.requestRtp(player);
+		if (!outcome.success()) {
+			switch (outcome.reason()) {
+				case ActionReason.RTP_DISABLED ->
+						source.sendError(Text.literal("El comando /rtp está desactivado en este servidor."));
+				case ActionReason.RTP_DIMENSION_NOT_ALLOWED ->
+						source.sendError(Text.literal("No puedes usar /rtp en esta dimensión."));
+				case ActionReason.COOLDOWN_ACTIVE -> {
+					String remaining = formatDuration(Duration.ofSeconds(outcome.data()));
 					source.sendError(Text.literal("Todavía no puedes volver a usar /rtp. Podrás hacerlo en " + remaining + "."));
-					return 0;
 				}
+				case ActionReason.RTP_NO_SAFE_LOCATION ->
+						source.sendError(Text.literal("No se ha podido encontrar un lugar seguro. Inténtalo de nuevo."));
+				default -> throw new IllegalStateException("Unhandled ActionReason from requestRtp: " + outcome.reason());
 			}
-		}
-
-		Optional<BlockPos> maybePos = FINDER.findSafeLocation(world, IslandCoreMod.RTP_CONFIG);
-		if (maybePos.isEmpty()) {
-			// No cooldown applied: don't penalize the player for bad luck finding a spot.
-			source.sendError(Text.literal("No se ha podido encontrar un lugar seguro. Inténtalo de nuevo."));
 			return 0;
 		}
-
-		TELEPORT_BACKEND.teleport(player, world, maybePos.get());
-		lastRtpAt.put(playerUuid, Instant.now());
 
 		source.sendFeedback(() -> Text.literal("¡Teletransportado a una ubicación aleatoria!"), false);
 

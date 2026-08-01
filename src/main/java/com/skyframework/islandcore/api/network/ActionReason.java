@@ -64,6 +64,34 @@ public final class ActionReason {
 	// "La isla de Spawn todavía no existe." (executeAdminSpawnResize, executeAdminSpawnSetHome)
 	public static final String SPAWN_NOT_EXISTS = "spawn_not_exists";
 
+	// Added alongside the Sprint "acciones de isla" service extraction (Paso 0):
+
+	// "Tu isla no tiene un home asignado." (TeleportManagerImpl#requestHome)
+	public static final String HOME_NOT_SET = "home_not_set";
+
+	// "Esta isla ya está en proceso de eliminación." (IslandDeletionServiceImpl#requestDeletion)
+	public static final String ISLAND_ALREADY_DELETING = "island_already_deleting";
+
+	// GameProfile/UUID resolution failed for a target name (MembershipService#invite via the
+	// network path, which has no Brigadier GameProfileArgumentType to resolve it for free).
+	public static final String TARGET_NOT_FOUND = "target_not_found";
+
+	// "El comando /spawn está desactivado en este servidor." (SpawnCommand — network path only,
+	// see TeleportRequestC2S; the text command keeps its own source.sendError check unchanged)
+	public static final String SPAWN_DISABLED = "spawn_disabled";
+
+	// "El comando /farming está desactivado en este servidor." (FarmingCommand — network path only)
+	public static final String FARMING_DISABLED = "farming_disabled";
+
+	// "El comando /rtp está desactivado en este servidor." (TeleportManagerImpl#requestRtp)
+	public static final String RTP_DISABLED = "rtp_disabled";
+
+	// "No puedes usar /rtp en esta dimensión." (TeleportManagerImpl#requestRtp)
+	public static final String RTP_DIMENSION_NOT_ALLOWED = "rtp_dimension_not_allowed";
+
+	// "No se ha podido encontrar un lugar seguro. Inténtalo de nuevo." (TeleportManagerImpl#requestRtp)
+	public static final String RTP_NO_SAFE_LOCATION = "rtp_no_safe_location";
+
 	private ActionReason() {
 	}
 }

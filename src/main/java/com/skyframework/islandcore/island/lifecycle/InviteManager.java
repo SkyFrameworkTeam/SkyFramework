@@ -1,6 +1,7 @@
 package com.skyframework.islandcore.island.lifecycle;
 
 import com.skyframework.islandcore.api.island.Island;
+import com.skyframework.islandcore.api.network.ActionOutcome;
 
 import java.util.List;
 import java.util.Optional;
@@ -8,7 +9,11 @@ import java.util.UUID;
 
 public interface InviteManager {
 
-	void invite(UUID islandId, UUID invitedByUuid, UUID inviteeUuid);
+	// Returns ActionOutcome instead of throwing (as of the "acciones de isla" network sprint):
+	// ActionReason.ALREADY_OWNER / ALREADY_MEMBER on failure, letting both the text command and
+	// MembershipService (network path) format their own message from the same reason without
+	// depending on exception message text.
+	ActionOutcome<Void> invite(UUID islandId, UUID invitedByUuid, UUID inviteeUuid);
 
 	// Consumes and returns the island of the pending, non-expired invite for inviteeUuid,
 	// adding them as a MEMBER in the process. Empty if there was none (or it expired).

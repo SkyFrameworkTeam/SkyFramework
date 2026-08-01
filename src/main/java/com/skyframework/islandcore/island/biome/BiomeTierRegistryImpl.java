@@ -166,4 +166,9 @@ public class BiomeTierRegistryImpl implements BiomeTierRegistry {
 		}
 		return available;
 	}
+
+	@Override
+	public List<BiomeTier> getAllTiers() {
+		return List.copyOf(tiers);
+	}
 }

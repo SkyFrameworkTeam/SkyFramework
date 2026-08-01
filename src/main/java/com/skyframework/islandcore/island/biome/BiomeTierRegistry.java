@@ -23,4 +23,10 @@ public interface BiomeTierRegistry {
 	// any tier whose permission they hold). Command-autocomplete convenience only: canUse() is
 	// still the real gate at execution time, so this must never be trusted as a security check.
 	Collection<Identifier> getAvailableBiomes(UUID playerUuid, PermissionProvider permissionProvider);
+
+	// Every configured tier, in configured order, regardless of whether the caller can use them.
+	// Added for BiomeTiersS2C (Sprint "acciones de isla"): that packet needs to show every tier
+	// (including locked ones) so the client can render "unlocks with tier X" — unlike
+	// getAvailableBiomes(), which only returns biomes the player already qualifies for.
+	List<BiomeTier> getAllTiers();
 }
