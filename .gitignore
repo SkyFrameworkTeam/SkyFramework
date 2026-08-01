@@ -47,3 +47,8 @@ replay_*.log
 
 cmd.pipe.lnk
 server_console.log
+
+# stray runtime log accidentally written under the Java source tree by a misdirected working
+# directory during a past debugging session — never legitimate source, ignored defensively.
+
+src/main/java/com/skyframework/islandcore/logs/

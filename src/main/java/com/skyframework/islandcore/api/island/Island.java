@@ -43,6 +43,11 @@ public interface Island {
 
 	BlockPos getHomeLocation();
 
+	// Never null: defaults to IslandData.DEFAULT_BIOME_ID ("minecraft:the_void", the flat
+	// generator biome the islandcore:islands dimension itself uses — see islands.json) for an
+	// island that has never had /island biome used on it, then tracks whatever was last applied.
+	String getCurrentBiomeId();
+
 	// Null if the biome has never been changed via /island biome.
 	Instant getLastBiomeChangeAt();
 

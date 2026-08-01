@@ -70,6 +70,7 @@ public final class IslandSnapshotBuilder {
 				island.getIslandSize(),
 				maxSize,
 				island.getIslandType().getId(),
+				island.getCurrentBiomeId(),
 				Optional.of(island.getHomeLocation()),
 				island.getState().name(),
 				members,
@@ -84,7 +85,7 @@ public final class IslandSnapshotBuilder {
 	public static IslandSnapshotS2C buildEmpty(UUID playerUuid) {
 		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(playerUuid);
 		return new IslandSnapshotS2C(
-				false, 0, maxSize, "", Optional.empty(), "",
+				false, 0, maxSize, "", "", Optional.empty(), "",
 				List.of(), List.of(), List.of(), IslandSnapshotS2C.EntityCounts.EMPTY
 		);
 	}

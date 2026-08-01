@@ -202,7 +202,8 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 				IslandType.PLAINS,
 				center,
 				IslandState.ACTIVE,
-				now
+				now,
+				IslandData.DEFAULT_BIOME_ID
 		);
 
 		islandsById.put(islandId, island);
@@ -261,6 +262,15 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 		IslandData island = islandsById.get(islandId);
 		if (island != null) {
 			island.setHomeLocation(newHome);
+			saveIfStorageReady(island);
+		}
+	}
+
+	@Override
+	public void updateCurrentBiomeId(UUID islandId, String biomeId) {
+		IslandData island = islandsById.get(islandId);
+		if (island != null) {
+			island.setCurrentBiomeId(biomeId);
 			saveIfStorageReady(island);
 		}
 	}

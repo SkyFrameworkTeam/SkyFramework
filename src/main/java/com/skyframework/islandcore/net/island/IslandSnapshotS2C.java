@@ -20,15 +20,20 @@ import java.util.UUID;
  * values in every other field if they don't have one yet. Built by {@link IslandSnapshotBuilder}
  * from the existing island services — this record only carries data, no business logic.
  *
- * <p>Field count (10) is past {@link PacketCodec#tuple}'s 6-argument limit, so {@link #CODEC} is
+ * <p>Field count (11) is past {@link PacketCodec#tuple}'s 6-argument limit, so {@link #CODEC} is
  * written by hand with {@link PacketCodec#of}; the nested per-entry records below stay within
  * the limit and keep their own small tuple codecs.
+ *
+ * <p><b>Wire format changed:</b> {@code currentBiomeId} was inserted after {@code type} — this is
+ * a client/server protocol break for IslandCoreClient's own copy of this record, which needs the
+ * matching update made separately in that project.
  */
 public record IslandSnapshotS2C(
 		boolean exists,
 		int size,
 		int maxSize,
 		String type,
+		String currentBiomeId,
 		Optional<BlockPos> home,
 		String state,
 		List<MemberEntry> members,
@@ -56,6 +61,7 @@ public record IslandSnapshotS2C(
 				PacketCodecs.VAR_INT.encode(buf, value.size());
 				PacketCodecs.VAR_INT.encode(buf, value.maxSize());
 				PacketCodecs.STRING.encode(buf, value.type());
+				PacketCodecs.STRING.encode(buf, value.currentBiomeId());
 				HOME_CODEC.encode(buf, value.home());
 				PacketCodecs.STRING.encode(buf, value.state());
 				MEMBER_LIST_CODEC.encode(buf, value.members());
@@ -67,6 +73,7 @@ public record IslandSnapshotS2C(
 					PacketCodecs.BOOL.decode(buf),
 					PacketCodecs.VAR_INT.decode(buf),
 					PacketCodecs.VAR_INT.decode(buf),
+					PacketCodecs.STRING.decode(buf),
 					PacketCodecs.STRING.decode(buf),
 					HOME_CODEC.decode(buf),
 					PacketCodecs.STRING.decode(buf),

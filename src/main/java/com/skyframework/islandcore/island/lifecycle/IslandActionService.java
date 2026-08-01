@@ -1,0 +1,208 @@
+package com.skyframework.islandcore.island.lifecycle;
+
+import com.skyframework.islandcore.IslandCoreMod;
+import com.skyframework.islandcore.api.island.Island;
+import com.skyframework.islandcore.api.network.ActionOutcome;
+import com.skyframework.islandcore.api.network.ActionReason;
+import com.skyframework.islandcore.api.permission.IslandPermissions;
+import com.skyframework.islandcore.island.biome.BiomeTier;
+import com.skyframework.islandcore.island.generation.BasicPlatformGenerator;
+import com.skyframework.islandcore.island.model.IslandSetting;
+
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.entry.RegistryEntry;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
+import net.minecraft.world.biome.Biome;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Extracted from IslandCommand (Sprint "acciones de isla"): every method here reuses the same
+ * IslandRegistryApi/PermissionProvider/BiomeTierRegistry/IslandBiomeApplier/IslandDeletionService
+ * calls the text command already made, just without formatting a chat message — callers (the
+ * text command, and now network packet handlers) turn the returned {@link ActionOutcome} into
+ * whatever presentation they need. No method here sends a message to the player itself.
+ */
+public final class IslandActionService {
+
+	public static final RegistryKey<World> ISLANDS_DIMENSION =
+			RegistryKey.of(RegistryKeys.WORLD, Identifier.of("islandcore", "islands"));
+
+	private static final BasicPlatformGenerator PLATFORM_GENERATOR = new BasicPlatformGenerator();
+
+	private IslandActionService() {
+	}
+
+	public static ActionOutcome<Island> create(ServerPlayerEntity player, MinecraftServer server) {
+		UUID playerUuid = player.getUuid();
+
+		if (IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.ISLAND_CREATE_DENY)) {
+			return ActionOutcome.fail(ActionReason.NO_PERMISSION);
+		}
+
+		Island island;
+		try {
+			island = IslandCoreMod.ISLAND_REGISTRY.createIsland(playerUuid, ISLANDS_DIMENSION);
+		} catch (IllegalStateException e) {
+			return ActionOutcome.fail(ActionReason.ALREADY_HAS_ISLAND);
+		}
+
+		BlockPos center = island.getCenter();
+		ServerWorld islandsWorld = server.getWorld(ISLANDS_DIMENSION);
+		PLATFORM_GENERATOR.generate(islandsWorld, center, island.getIslandSize());
+
+		return ActionOutcome.ok(island);
+	}
+
+	public record UpgradeResult(int oldSize, int newSize) {
+	}
+
+	// oldSize == newSize means "already at the max permitted size" — a success, not a failure
+	// (matches /island upgrade's existing behavior: it replies with feedback, not an error, and
+	// still returns 1).
+	public static ActionOutcome<UpgradeResult> upgrade(UUID playerUuid) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(playerUuid);
+		int currentSize = island.getIslandSize();
+
+		if (maxSize <= currentSize) {
+			return ActionOutcome.ok(new UpgradeResult(currentSize, currentSize));
+		}
+
+		try {
+			IslandCoreMod.ISLAND_REGISTRY.resizeIsland(island.getIslandId(), maxSize);
+		} catch (IllegalArgumentException e) {
+			return ActionOutcome.fail(ActionReason.PLOT_SIZE_EXCEEDED);
+		}
+
+		return ActionOutcome.ok(new UpgradeResult(currentSize, maxSize));
+	}
+
+	public static ActionOutcome<Void> updateSetting(UUID playerUuid, IslandSetting setting, boolean value) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		// getIslandByOwner already only returns islands this player literally owns, so this is
+		// currently redundant, but kept explicit per the original command's own comment, in case
+		// that lookup ever changes (e.g. members getting their own island-lookup path).
+		if (!island.getOwnerUuid().equals(playerUuid)) {
+			return ActionOutcome.fail(ActionReason.NOT_OWNER);
+		}
+
+		IslandCoreMod.ISLAND_REGISTRY.updateIslandSetting(island.getIslandId(), setting, value);
+		return ActionOutcome.ok();
+	}
+
+	public static ActionOutcome<Void> requestDelete(UUID requestedBy) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(requestedBy);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		try {
+			IslandCoreMod.DELETION_SERVICE.requestDeletion(maybeIsland.get().getIslandId(), requestedBy);
+		} catch (IllegalStateException e) {
+			return ActionOutcome.fail(ActionReason.ISLAND_ALREADY_DELETING);
+		}
+
+		return ActionOutcome.ok();
+	}
+
+	public static ActionOutcome<Void> confirmDelete(UUID requestedBy) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(requestedBy);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		boolean confirmed = IslandCoreMod.DELETION_SERVICE.confirmDeletion(maybeIsland.get().getIslandId(), requestedBy);
+		if (!confirmed) {
+			return ActionOutcome.fail(ActionReason.NO_PENDING_DELETION);
+		}
+
+		return ActionOutcome.ok();
+	}
+
+	/**
+	 * data holds different types depending on the failure reason (documented per case below),
+	 * matching the original command's need for extra detail beyond a flat message — {@code null}
+	 * on success and on any reason not listed:
+	 * <ul>
+	 *   <li>{@link ActionReason#BIOME_LOCKED}: {@code List<String>} tier ids containing the
+	 *   biome (possibly empty, meaning the biome isn't in any configured tier at all)</li>
+	 *   <li>{@link ActionReason#COOLDOWN_ACTIVE}: {@code Long} seconds remaining</li>
+	 * </ul>
+	 */
+	public static ActionOutcome<Object> changeBiome(ServerPlayerEntity player, Identifier biomeId, MinecraftServer server) {
+		UUID playerUuid = player.getUuid();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		if (!island.getOwnerUuid().equals(playerUuid)) {
+			return ActionOutcome.fail(ActionReason.NOT_OWNER);
+		}
+
+		Registry<Biome> biomeRegistry = server.getRegistryManager().get(RegistryKeys.BIOME);
+		Optional<RegistryEntry.Reference<Biome>> maybeBiome = biomeRegistry.getEntry(biomeId);
+		if (maybeBiome.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.BIOME_NOT_FOUND);
+		}
+
+		if (!IslandCoreMod.BIOME_TIER_REGISTRY.canUse(playerUuid, biomeId, IslandCoreMod.PERMISSION_PROVIDER)) {
+			List<BiomeTier> tiers = IslandCoreMod.BIOME_TIER_REGISTRY.getTiersContaining(biomeId);
+			List<String> tierIds = tiers.stream().map(BiomeTier::id).toList();
+			return new ActionOutcome<>(false, ActionReason.BIOME_LOCKED, tierIds);
+		}
+
+		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.BIOME_COOLDOWN_BYPASS)) {
+			Instant lastChange = island.getLastBiomeChangeAt();
+			if (lastChange != null) {
+				long cooldownSeconds = IslandCoreMod.PERMISSION_PROVIDER.getBiomeCooldownSeconds(playerUuid);
+				Instant availableAt = lastChange.plusSeconds(cooldownSeconds);
+				if (Instant.now().isBefore(availableAt)) {
+					long remainingSeconds = java.time.Duration.between(Instant.now(), availableAt).getSeconds();
+					return new ActionOutcome<>(false, ActionReason.COOLDOWN_ACTIVE, remainingSeconds);
+				}
+			}
+		}
+
+		ServerWorld world = server.getWorld(island.getDimension());
+		if (world == null) {
+			return ActionOutcome.fail(ActionReason.DIMENSION_UNAVAILABLE);
+		}
+
+		IslandCoreMod.BIOME_APPLIER.enqueue(world, island.getPlotBounds(), maybeBiome.get(), playerUuid);
+		// Recorded now, at enqueue time, not once IslandBiomeApplier's multi-tick chunk-by-chunk
+		// job actually finishes touching every block — same convention as
+		// updateLastBiomeChangeAt right below (also written immediately, before the world catches
+		// up) and as IslandDeletionServiceImpl marking DELETING immediately on confirm. The
+		// applier has no crash-resume mechanism either way, so deferring to completion wouldn't
+		// remove the inconsistency window, just move it — and the player is already told this
+		// "puede tardar unos segundos" by the caller's own chat message.
+		IslandCoreMod.ISLAND_REGISTRY.updateCurrentBiomeId(island.getIslandId(), biomeId.toString());
+		IslandCoreMod.ISLAND_REGISTRY.updateLastBiomeChangeAt(island.getIslandId(), Instant.now());
+
+		return ActionOutcome.ok();
+	}
+}

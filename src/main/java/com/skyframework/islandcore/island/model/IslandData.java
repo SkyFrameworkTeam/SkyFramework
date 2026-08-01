@@ -20,6 +20,12 @@ import java.util.UUID;
 
 public class IslandData implements Island {
 
+	// The islandcore:islands dimension's own flat-generator biome (see
+	// data/islandcore/dimension/islands.json) — the actual physical biome a freshly built
+	// island's plot sits in before any /island biome change is ever applied, and what
+	// currentBiomeId falls back to for islands persisted before this field existed.
+	public static final String DEFAULT_BIOME_ID = "minecraft:the_void";
+
 	private final UUID islandId;
 	private final UUID ownerUuid;
 	private final RegistryKey<World> dimension;
@@ -33,6 +39,7 @@ public class IslandData implements Island {
 	private int plotSize;
 	private IslandType islandType;
 	private BlockPos homeLocation;
+	private String currentBiomeId;
 	private Instant lastBiomeChangeAt;
 	private IslandState state;
 	private final Set<IslandMember> members = new LinkedHashSet<>();
@@ -55,7 +62,8 @@ public class IslandData implements Island {
 			IslandType islandType,
 			BlockPos homeLocation,
 			IslandState state,
-			Instant createdAt
+			Instant createdAt,
+			String currentBiomeId
 	) {
 		this.islandId = islandId;
 		this.ownerUuid = ownerUuid;
@@ -69,6 +77,7 @@ public class IslandData implements Island {
 		this.plotSize = plotSize;
 		this.islandType = islandType;
 		this.homeLocation = homeLocation;
+		this.currentBiomeId = currentBiomeId;
 		this.lastBiomeChangeAt = null;
 		this.state = state;
 		this.createdAt = createdAt;
@@ -95,10 +104,11 @@ public class IslandData implements Island {
 			Instant updatedAt,
 			Collection<IslandMember> members,
 			Map<IslandSetting, Boolean> settings,
-			Instant lastBiomeChangeAt
+			Instant lastBiomeChangeAt,
+			String currentBiomeId
 	) {
 		this(islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
-				islandSize, plotSize, islandType, homeLocation, state, createdAt);
+				islandSize, plotSize, islandType, homeLocation, state, createdAt, currentBiomeId);
 		this.updatedAt = updatedAt;
 		this.members.addAll(members);
 		this.settings.putAll(settings);
@@ -197,6 +207,16 @@ public class IslandData implements Island {
 
 	public void setHomeLocation(BlockPos homeLocation) {
 		this.homeLocation = homeLocation;
+		touch();
+	}
+
+	@Override
+	public String getCurrentBiomeId() {
+		return currentBiomeId;
+	}
+
+	public void setCurrentBiomeId(String currentBiomeId) {
+		this.currentBiomeId = currentBiomeId;
 		touch();
 	}
 

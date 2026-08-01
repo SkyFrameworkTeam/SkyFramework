@@ -48,6 +48,8 @@ public interface IslandRegistryApi {
 
 	void updateHomeLocation(UUID islandId, BlockPos newHome);
 
+	void updateCurrentBiomeId(UUID islandId, String biomeId);
+
 	void updateLastBiomeChangeAt(UUID islandId, Instant instant);
 
 	void updateIslandSetting(UUID islandId, IslandSetting setting, boolean value);

@@ -132,6 +132,7 @@ public class NbtIslandStorage implements IslandStorage {
 		nbt.putInt("plotSize", island.getPlotSize());
 		nbt.putString("islandType", island.getIslandType().getId());
 		nbt.put("homeLocation", posToNbt(island.getHomeLocation()));
+		nbt.putString("currentBiomeId", island.getCurrentBiomeId());
 		if (island.getLastBiomeChangeAt() != null) {
 			nbt.putLong("lastBiomeChangeAt", island.getLastBiomeChangeAt().toEpochMilli());
 		}
@@ -157,6 +158,11 @@ public class NbtIslandStorage implements IslandStorage {
 		int plotSize = nbt.getInt("plotSize");
 		IslandType islandType = IslandType.fromId(nbt.getString("islandType"));
 		BlockPos homeLocation = posFromNbt(nbt.getCompound("homeLocation"));
+		// Absent on islands saved before this field existed: falls back to the same default a
+		// never-changed island gets at creation (see IslandData.DEFAULT_BIOME_ID).
+		String currentBiomeId = nbt.contains("currentBiomeId", NbtElement.STRING_TYPE)
+				? nbt.getString("currentBiomeId")
+				: IslandData.DEFAULT_BIOME_ID;
 		// Absent on islands saved before this field existed: null means "never changed".
 		Instant lastBiomeChangeAt = nbt.contains("lastBiomeChangeAt", NbtElement.LONG_TYPE)
 				? Instant.ofEpochMilli(nbt.getLong("lastBiomeChangeAt"))
@@ -173,7 +179,7 @@ public class NbtIslandStorage implements IslandStorage {
 		return new IslandData(
 				islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
 				islandSize, plotSize, islandType, homeLocation, state, createdAt, updatedAt, members, settings,
-				lastBiomeChangeAt
+				lastBiomeChangeAt, currentBiomeId
 		);
 	}
 
