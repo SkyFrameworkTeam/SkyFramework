@@ -4,6 +4,7 @@ import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandState;
 import com.skyframework.islandcore.island.model.IslandBounds;
+import com.skyframework.islandcore.island.model.IslandData;
 import com.skyframework.islandcore.teleport.TeleportBackend;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -12,13 +13,17 @@ import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
+import net.minecraft.world.biome.Biome;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -208,11 +213,36 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 
 	private void finishJob(PendingBlockClear job) {
 		blockClearQueue.poll();
-		islandsBeingDeleted.remove(job.islandId);
+
+		// Between block clearing and the final registry cleanup below: reset the plot's biome
+		// back to void, over the full reserved plot (same reasoning as the block clearing itself —
+		// step f) releases this grid cell for reuse). islandsBeingDeleted stays marked until this
+		// finishes too, not just once block clearing is done, so a resumed/duplicate deletion
+		// can't race with it.
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIsland(job.islandId);
+		ServerWorld world = server != null ? server.getWorld(job.dimension) : null;
+		Optional<RegistryEntry.Reference<Biome>> voidBiome = server != null
+				? server.getRegistryManager().get(RegistryKeys.BIOME).getEntry(Identifier.of(IslandData.DEFAULT_BIOME_ID))
+				: Optional.empty();
+
+		if (maybeIsland.isPresent() && world != null && voidBiome.isPresent()) {
+			Island island = maybeIsland.get();
+			IslandCoreMod.BIOME_APPLIER.enqueue(world, island.getPlotBounds(), voidBiome.get(), island.getOwnerUuid(),
+					false, () -> finishDeletion(job.islandId));
+		} else {
+			// Defensive fallback: couldn't resolve the world/biome/island (e.g. dimension unloaded
+			// or already gone) — skip straight to cleanup rather than leaving the island stuck
+			// mid-deletion forever.
+			finishDeletion(job.islandId);
+		}
+	}
+
+	private void finishDeletion(UUID islandId) {
+		islandsBeingDeleted.remove(islandId);
 
 		// e) unregister spatial index, f) release grid slot, g) delete from storage,
 		// h) remove from the in-memory maps — all handled together by the registry.
-		IslandCoreMod.ISLAND_REGISTRY.deleteIsland(job.islandId);
+		IslandCoreMod.ISLAND_REGISTRY.deleteIsland(islandId);
 	}
 
 	private void evictPlayers(Island island) {

@@ -48,7 +48,17 @@ public class IslandBiomeApplier {
 	}
 
 	public void enqueue(ServerWorld world, IslandBounds bounds, RegistryEntry<Biome> targetBiome, UUID requestedBy) {
-		jobs.add(new PendingBiomeJob(world, bounds, targetBiome, requestedBy));
+		jobs.add(new PendingBiomeJob(world, bounds, targetBiome, requestedBy, true, null));
+	}
+
+	// Used by IslandDeletionServiceImpl to reset a deleted island's plot back to void: notifyPlayer
+	// is false there (the "your biome change finished" message would be confusing when the island
+	// is being deleted, not changed), and onFinished lets the deletion service chain its final
+	// cleanup (spatial index/grid/storage) only once the plot's biome has actually been reset —
+	// same tick-budget/chunk-resend mechanism as the 4-arg overload above, nothing duplicated.
+	public void enqueue(ServerWorld world, IslandBounds bounds, RegistryEntry<Biome> targetBiome, UUID requestedBy,
+			boolean notifyPlayer, Runnable onFinished) {
+		jobs.add(new PendingBiomeJob(world, bounds, targetBiome, requestedBy, notifyPlayer, onFinished));
 	}
 
 	private void tick() {
@@ -67,7 +77,12 @@ public class IslandBiomeApplier {
 
 			if (job.remainingColumns.isEmpty()) {
 				jobs.poll();
-				notifyFinished(job);
+				if (job.notifyPlayer) {
+					notifyFinished(job);
+				}
+				if (job.onFinished != null) {
+					job.onFinished.run();
+				}
 			}
 		}
 	}
@@ -126,14 +141,19 @@ public class IslandBiomeApplier {
 		final IslandBounds bounds;
 		final RegistryEntry<Biome> targetBiome;
 		final UUID requestedBy;
+		final boolean notifyPlayer;
+		final Runnable onFinished;
 		final MultiNoiseUtil.MultiNoiseSampler noiseSampler;
 		final Deque<ChunkPos> remainingColumns;
 
-		PendingBiomeJob(ServerWorld world, IslandBounds bounds, RegistryEntry<Biome> targetBiome, UUID requestedBy) {
+		PendingBiomeJob(ServerWorld world, IslandBounds bounds, RegistryEntry<Biome> targetBiome, UUID requestedBy,
+				boolean notifyPlayer, Runnable onFinished) {
 			this.world = world;
 			this.bounds = bounds;
 			this.targetBiome = targetBiome;
 			this.requestedBy = requestedBy;
+			this.notifyPlayer = notifyPlayer;
+			this.onFinished = onFinished;
 			this.noiseSampler = world.getChunkManager().getNoiseConfig().getMultiNoiseSampler();
 			this.remainingColumns = collectColumns(bounds);
 		}

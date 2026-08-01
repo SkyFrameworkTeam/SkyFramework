@@ -28,6 +28,7 @@ import com.skyframework.islandcore.net.ServerPacketHandlers;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
 import com.skyframework.islandcore.player.FirstJoinTracker;
+import com.skyframework.islandcore.player.StarterKitConfig;
 import com.skyframework.islandcore.portal.PortalLinkConfig;
 import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
@@ -48,6 +49,9 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
 
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
@@ -55,6 +59,8 @@ import net.minecraft.util.Identifier;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Optional;
 
 public class IslandCoreMod implements ModInitializer {
 	public static final String MOD_ID = "islandcore";
@@ -77,6 +83,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static IslandEntityTracker ENTITY_TRACKER;
 	public static DimensionRegistry DIMENSION_REGISTRY;
 	public static FirstJoinTracker FIRST_JOIN_TRACKER;
+	public static StarterKitConfig STARTER_KIT_CONFIG;
 	public static RtpConfig RTP_CONFIG;
 	public static SpawnConfig SPAWN_CONFIG;
 	public static PortalLinkConfig PORTAL_LINK_CONFIG;
@@ -104,6 +111,7 @@ public class IslandCoreMod implements ModInitializer {
 		ENTITY_TRACKER = new IslandEntityTrackerImpl();
 		DIMENSION_REGISTRY = new DimensionRegistryImpl(new FantasyDimensionRuntimeProvider(), new VanillaTeleportBackend());
 		FIRST_JOIN_TRACKER = new FirstJoinTracker();
+		STARTER_KIT_CONFIG = new StarterKitConfig();
 		RTP_CONFIG = new RtpConfig();
 		SPAWN_CONFIG = new SpawnConfig();
 		PORTAL_LINK_CONFIG = new PortalLinkConfig();
@@ -162,6 +170,14 @@ public class IslandCoreMod implements ModInitializer {
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
 			ServerPlayerEntity player = handler.getPlayer();
 			boolean firstJoin = FIRST_JOIN_TRACKER.isFirstJoin(player.getUuid());
+
+			// Independent of the welcome teleport below (which silently no-ops without a Spawn
+			// island): the starter kit is about the player, not the island system, so it's given
+			// on every actual first join regardless of whether a Spawn island exists yet.
+			if (firstJoin) {
+				giveStarterKit(player);
+			}
+
 			if (!firstJoin && !SPAWN_CONFIG.isAlwaysRespawnOnDisconnect()) {
 				return;
 			}
@@ -184,5 +200,27 @@ public class IslandCoreMod implements ModInitializer {
 
 	public static Identifier id(String path) {
 		return Identifier.of(MOD_ID, path);
+	}
+
+	// Skips (with a log warning) any entry whose item id doesn't resolve, rather than failing the
+	// whole welcome flow over one bad config entry.
+	private static void giveStarterKit(ServerPlayerEntity player) {
+		for (StarterKitConfig.ItemStackDefinition definition : STARTER_KIT_CONFIG.getItems()) {
+			Identifier itemId;
+			try {
+				itemId = Identifier.of(definition.item());
+			} catch (RuntimeException e) {
+				LOGGER.error("Skipping invalid starter kit item id: {}", definition.item(), e);
+				continue;
+			}
+
+			Optional<Item> maybeItem = Registries.ITEM.getOrEmpty(itemId);
+			if (maybeItem.isEmpty()) {
+				LOGGER.error("Skipping unknown starter kit item id: {}", definition.item());
+				continue;
+			}
+
+			player.getInventory().insertStack(new ItemStack(maybeItem.get(), definition.count()));
+		}
 	}
 }
