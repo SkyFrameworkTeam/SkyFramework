@@ -92,6 +92,74 @@ public final class ActionReason {
 	// "No se ha podido encontrar un lugar seguro. Inténtalo de nuevo." (TeleportManagerImpl#requestRtp)
 	public static final String RTP_NO_SAFE_LOCATION = "rtp_no_safe_location";
 
+	// Admin network block (island list/detail/delete, Spawn management, Dimension Manager, vanilla
+	// reset queue). Unlike every constant above, these carry an "error." prefix on the wire — this
+	// block is a distinct, newer packet family with its own client-side lookup convention; the
+	// prefix is deliberate, not a typo, and does not retroactively apply to the bare keys above.
+
+	// Target player has no island (AdminIslandDetailC2S/AdminIslandDeleteC2S/ConfirmC2S): distinct
+	// from NO_ISLAND, which is first-person ("you don't have an island") — this one is about a
+	// third party the admin is looking up.
+	public static final String ISLAND_NOT_FOUND = "error.island_not_found";
+
+	// No managed dimension with the given id (DimensionDetail/Delete/Regenerate request handlers;
+	// DimensionRegistryImpl#requireActive's IllegalArgumentException branch).
+	public static final String DIMENSION_NOT_FOUND = "error.dimension_not_found";
+
+	// DimensionRegistryImpl#createDimension's IllegalStateException (id already registered).
+	public static final String DIMENSION_ALREADY_EXISTS = "error.dimension_already_exists";
+
+	// Identifier.of("islandcore", id) rejected the id string (DimensionCreateC2S) — mirrors
+	// DimensionCommand#executeCreate's own separate catch for a malformed id argument.
+	public static final String INVALID_DIMENSION_ID = "error.invalid_dimension_id";
+
+	// DimensionGeneratorStyle.valueOf(...) rejected the style string (DimensionCreateC2S).
+	public static final String INVALID_STYLE = "error.invalid_style";
+
+	// SpawnIslandCreateC2S when the Spawn island already exists (IllegalStateException from
+	// IslandRegistry#createSpawnIsland). Distinct wire value from the older SPAWN_ALREADY_EXISTS,
+	// which this admin block does not reuse (see class javadoc above).
+	public static final String SPAWN_ISLAND_ALREADY_EXISTS = "error.spawn_island_already_exists";
+
+	// SpawnIslandResizeC2S/SpawnIslandSetHomeC2S when the Spawn island doesn't exist yet. Distinct
+	// wire value from the older SPAWN_NOT_EXISTS, same reasoning as above.
+	public static final String SPAWN_ISLAND_NOT_FOUND = "error.spawn_island_not_found";
+
+	// SpawnIslandSetHomeC2S when the sender isn't standing inside the Spawn island's built bounds —
+	// the same bounds+dimension check /island admin spawn sethome already performs inline.
+	public static final String UNSAFE_LOCATION = "error.unsafe_location";
+
+	// A confirm/cancel packet (island delete, dimension delete/regenerate, vanilla reset
+	// confirm/cancel) found no matching pending request. Every underlying service collapses
+	// "never requested" and "already expired" into the same boolean false with no way to tell them
+	// apart from the public interface (confirmed by reading IslandDeletionServiceImpl,
+	// DimensionRegistryImpl, and VanillaResetService's confirm methods) — so this is the only one
+	// of the two actually reachable today; CONFIRMATION_EXPIRED below is added per spec but not
+	// currently distinguishable/used.
+	public static final String NO_PENDING_CONFIRMATION = "error.no_pending_confirmation";
+
+	// Reserved: would need a service-level change (expose whether a just-missed request existed vs.
+	// never existed) to ever be distinguishable from NO_PENDING_CONFIRMATION. Not reused anywhere
+	// yet — see NO_PENDING_CONFIRMATION's comment.
+	public static final String CONFIRMATION_EXPIRED = "error.confirmation_expired";
+
+	// VanillaResetService#requireValidKey's IllegalArgumentException (dimensionKey isn't one of
+	// VanillaResetService.VALID_DIMENSION_KEYS).
+	public static final String VANILLA_DIMENSION_INVALID = "error.vanilla_dimension_invalid";
+
+	// VanillaResetQueueC2S when VanillaResetService#listPendingResets() already has an IN_PROGRESS
+	// entry for the requested dimension. VanillaResetService#requestReset itself has no such guard
+	// (re-requesting silently replaces the queued entry on confirm), so this check is done in the
+	// packet handler itself, as a read-only pre-check via the existing listPendingResets(), without
+	// changing that service's own (intentionally idempotent) behavior for the text command.
+	public static final String VANILLA_RESET_ALREADY_QUEUED = "error.vanilla_reset_already_queued";
+
+	// DimensionRegistryImpl#requireActive's IllegalStateException branch (dimension exists but isn't
+	// ACTIVE — already DELETING or REGENERATING). Not in the originally specified key list; added
+	// because requireActive's two failure branches need two different reasons and only one
+	// (DIMENSION_NOT_FOUND) was specified.
+	public static final String DIMENSION_STATE_CONFLICT = "error.dimension_state_conflict";
+
 	private ActionReason() {
 	}
 }
