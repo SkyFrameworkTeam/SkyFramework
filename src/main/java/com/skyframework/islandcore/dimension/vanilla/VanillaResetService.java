@@ -102,8 +102,9 @@ public class VanillaResetService {
 
 		// Resolved now, not at next boot, so the applied seed doesn't depend on further randomness.
 		Long seed = resolveSeed(request.explicitSeed);
+		PendingVanillaReset.SeedMode seedMode = resolveSeedMode(request.explicitSeed);
 		enqueuePendingReset(new PendingVanillaReset(
-				dimensionKey, seed, requestedBy, PendingVanillaReset.Status.IN_PROGRESS, Instant.now()));
+				dimensionKey, seed, seedMode, requestedBy, PendingVanillaReset.Status.IN_PROGRESS, Instant.now()));
 		return true;
 	}
 
@@ -173,6 +174,20 @@ public class VanillaResetService {
 			return null;
 		}
 		return new Random().nextLong();
+	}
+
+	// Mirrors resolveSeed's own branching exactly, so the persisted PendingVanillaReset#seedMode
+	// always reflects how that entry's seed was actually decided, instead of being re-derived later
+	// from whether the seed value happens to be present (which can't tell RANDOM and CUSTOM apart).
+	private PendingVanillaReset.SeedMode resolveSeedMode(Long explicitSeed) {
+		if (explicitSeed != null) {
+			return PendingVanillaReset.SeedMode.CUSTOM;
+		}
+
+		if ("keep".equals(IslandCoreMod.VANILLA_RESET_CONFIG.getSeedMode())) {
+			return PendingVanillaReset.SeedMode.KEEP;
+		}
+		return PendingVanillaReset.SeedMode.RANDOM;
 	}
 
 	// Replaces any existing queued entry for the same dimension (no point resetting it twice in the

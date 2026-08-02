@@ -39,17 +39,22 @@ public record VanillaResetListS2C(List<QueueEntry> queue) implements CustomPaylo
 
 	/**
 	 * Wire field order: {@code dimensionKey} ({@code "overworld"}/{@code "nether"}/{@code "end"}),
-	 * {@code seed} (empty meaning "keeps the dimension's current seed"), {@code requestedBy},
-	 * {@code status} ({@link com.skyframework.islandcore.dimension.vanilla.PendingVanillaReset.Status}
+	 * {@code seed} (empty meaning "keeps the dimension's current seed"), {@code seedMode} (
+	 * {@link com.skyframework.islandcore.dimension.vanilla.PendingVanillaReset.SeedMode} name —
+	 * {@code "RANDOM"}/{@code "KEEP"}/{@code "CUSTOM"}, persisted verbatim from how the seed was
+	 * actually decided at confirm time rather than re-derived from whether {@code seed} is present,
+	 * since a resolved RANDOM seed and a CUSTOM one are otherwise indistinguishable once resolved),
+	 * {@code requestedBy}, {@code status} ({@link com.skyframework.islandcore.dimension.vanilla.PendingVanillaReset.Status}
 	 * name — always {@code "IN_PROGRESS"} today, since that's the only status ever persisted to
 	 * the queue file, but sent as-is rather than hardcoded client-side in case that changes).
 	 */
-	public record QueueEntry(String dimensionKey, Optional<Long> seed, UUID requestedBy, String status) {
+	public record QueueEntry(String dimensionKey, Optional<Long> seed, String seedMode, UUID requestedBy, String status) {
 		private static final PacketCodec<ByteBuf, Optional<Long>> SEED_CODEC = PacketCodecs.optional(PacketCodecs.VAR_LONG);
 
 		public static final PacketCodec<RegistryByteBuf, QueueEntry> CODEC = PacketCodec.tuple(
 				PacketCodecs.STRING, QueueEntry::dimensionKey,
 				SEED_CODEC, QueueEntry::seed,
+				PacketCodecs.STRING, QueueEntry::seedMode,
 				Uuids.PACKET_CODEC, QueueEntry::requestedBy,
 				PacketCodecs.STRING, QueueEntry::status,
 				QueueEntry::new

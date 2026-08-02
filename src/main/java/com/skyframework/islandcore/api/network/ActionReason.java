@@ -97,6 +97,14 @@ public final class ActionReason {
 	// block is a distinct, newer packet family with its own client-side lookup convention; the
 	// prefix is deliberate, not a typo, and does not retroactively apply to the bare keys above.
 
+	// Sender isn't a server operator (hasPermissionLevel(2)) for one of this admin block's actions.
+	// Deliberately separate from NO_PERMISSION above: that one means specifically "no LuckPerms
+	// permission to create an island" (executeCreate/ISLAND_CREATE_DENY) and must keep meaning only
+	// that — this is a different failure (missing operator status), reused by every operator check
+	// in ServerPacketHandlers' admin block instead of overloading NO_PERMISSION with a second
+	// meaning.
+	public static final String NOT_OPERATOR = "error.not_operator";
+
 	// Target player has no island (AdminIslandDetailC2S/AdminIslandDeleteC2S/ConfirmC2S): distinct
 	// from NO_ISLAND, which is first-person ("you don't have an island") — this one is about a
 	// third party the admin is looking up.

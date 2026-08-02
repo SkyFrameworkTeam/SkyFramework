@@ -298,7 +298,7 @@ public final class ServerPacketHandlers {
 		if (player.hasPermissionLevel(2)) {
 			return false;
 		}
-		ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NO_PERMISSION));
+		ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NOT_OPERATOR));
 		return true;
 	}
 
@@ -622,7 +622,7 @@ public final class ServerPacketHandlers {
 			List<VanillaResetListS2C.QueueEntry> entries = new ArrayList<>();
 			for (PendingVanillaReset pending : IslandCoreMod.VANILLA_RESET_SERVICE.listPendingResets()) {
 				entries.add(new VanillaResetListS2C.QueueEntry(
-						pending.getDimensionKey(), Optional.ofNullable(pending.getSeed()),
+						pending.getDimensionKey(), Optional.ofNullable(pending.getSeed()), pending.getSeedMode().name(),
 						pending.getRequestedBy(), pending.getStatus().name()));
 			}
 			ServerPlayNetworking.send(player, new VanillaResetListS2C(entries));

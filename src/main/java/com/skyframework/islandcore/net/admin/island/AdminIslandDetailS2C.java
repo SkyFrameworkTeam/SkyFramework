@@ -24,6 +24,9 @@ import java.util.UUID;
  * server's user cache, falls back to the raw UUID string), {@code dimension} (the registry key's
  * Identifier as a String), {@code gridX}, {@code gridZ}, {@code center}, {@code boundsMin},
  * {@code boundsMax}, {@code plotBoundsMin}, {@code plotBoundsMax}, {@code islandSize},
+ * {@code maxSize} (from {@code PermissionProvider#getHighestSizeAllowed}, same computation
+ * {@code AdminIslandBuilder} already uses for the list — placed right after {@code islandSize} to
+ * mirror {@link AdminIslandListS2C.IslandEntry}'s adjacent {@code size}/{@code maxSize} pairing),
  * {@code plotSize}, {@code islandType} (type id), {@code homeLocation}, {@code members} (list of
  * {@link IslandSnapshotS2C.MemberEntry} — reused as-is, owner included with role
  * {@code "OWNER"}, same as {@code IslandSnapshotBuilder}), {@code state}, {@code createdAt} /
@@ -44,6 +47,7 @@ public record AdminIslandDetailS2C(
 		BlockPos plotBoundsMin,
 		BlockPos plotBoundsMax,
 		int islandSize,
+		int maxSize,
 		int plotSize,
 		String islandType,
 		BlockPos homeLocation,
@@ -73,6 +77,7 @@ public record AdminIslandDetailS2C(
 				BlockPos.PACKET_CODEC.encode(buf, value.plotBoundsMin());
 				BlockPos.PACKET_CODEC.encode(buf, value.plotBoundsMax());
 				PacketCodecs.VAR_INT.encode(buf, value.islandSize());
+				PacketCodecs.VAR_INT.encode(buf, value.maxSize());
 				PacketCodecs.VAR_INT.encode(buf, value.plotSize());
 				PacketCodecs.STRING.encode(buf, value.islandType());
 				BlockPos.PACKET_CODEC.encode(buf, value.homeLocation());
@@ -94,6 +99,7 @@ public record AdminIslandDetailS2C(
 					BlockPos.PACKET_CODEC.decode(buf),
 					BlockPos.PACKET_CODEC.decode(buf),
 					BlockPos.PACKET_CODEC.decode(buf),
+					PacketCodecs.VAR_INT.decode(buf),
 					PacketCodecs.VAR_INT.decode(buf),
 					PacketCodecs.VAR_INT.decode(buf),
 					PacketCodecs.STRING.decode(buf),

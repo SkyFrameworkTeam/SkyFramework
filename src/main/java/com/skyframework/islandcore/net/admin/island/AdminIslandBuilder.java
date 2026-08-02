@@ -77,6 +77,8 @@ public final class AdminIslandBuilder {
 	}
 
 	public static AdminIslandDetailS2C buildDetail(MinecraftServer server, Island island) {
+		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(island.getOwnerUuid());
+
 		List<IslandSnapshotS2C.MemberEntry> members = new ArrayList<>();
 		members.add(new IslandSnapshotS2C.MemberEntry(
 				island.getOwnerUuid(), resolveName(server, island.getOwnerUuid()), IslandRole.OWNER.name()));
@@ -111,6 +113,7 @@ public final class AdminIslandBuilder {
 				island.getPlotBounds().min(),
 				island.getPlotBounds().max(),
 				island.getIslandSize(),
+				maxSize,
 				island.getPlotSize(),
 				island.getIslandType().getId(),
 				island.getHomeLocation(),
