@@ -110,7 +110,10 @@ tasks.register('release') {
 		// ExecOperations into a real task class, which is overkill for this simple sequential
 		// script). ProcessBuilder has no such churn risk across Gradle versions.
 		def runCommand = { List<String> cmd ->
-			def process = new ProcessBuilder(cmd)
+			// .toString() each element: Groovy GString interpolations (e.g. "Release v${x}")
+			// aren't java.lang.String, and ProcessBuilder's internal toArray(String[]) cast
+			// blows up on them with an ArrayStoreException-style arraycopy error.
+			def process = new ProcessBuilder(cmd.collect { it.toString() })
 					.directory(projectDir)
 					.redirectErrorStream(true)
 					.start()
