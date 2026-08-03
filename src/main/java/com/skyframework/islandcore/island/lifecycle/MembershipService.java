@@ -69,6 +69,12 @@ public final class MembershipService {
 		return invite(inviter, targetUuid.get(), server);
 	}
 
+	// Exposed for other network-only admin paths (SpawnAuthorizedPlayerAddC2S) that, like
+	// inviteByName above, have no Brigadier GameProfileArgumentType to resolve a name for free.
+	public static Optional<UUID> resolvePlayerUuid(String name, MinecraftServer server) {
+		return resolveUuid(name, server);
+	}
+
 	private static Optional<UUID> resolveUuid(String name, MinecraftServer server) {
 		ServerPlayerEntity online = server.getPlayerManager().getPlayer(name);
 		if (online != null) {
@@ -117,6 +123,20 @@ public final class MembershipService {
 		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), targetUuid);
 
 		return ActionOutcome.ok();
+	}
+
+	// Admin-scoped variants of trust()/untrust() above, for the Spawn admin block: they operate on
+	// an explicit island rather than resolving it from the executor's own ownership, since the
+	// operator running /island admin spawn trust/untrust never owns the Spawn island themselves.
+	// Same upsert-safe addMember/removeMember underneath, so re-trusting or untrusting a
+	// non-member is a harmless no-op, exactly like the player-facing versions.
+	public static void trustOnIsland(Island island, UUID targetUuid) {
+		IslandMember member = new IslandMember(targetUuid, IslandRole.TRUSTED, Instant.now(), EnumSet.noneOf(IslandPermission.class));
+		IslandCoreMod.ISLAND_REGISTRY.addMember(island.getIslandId(), member);
+	}
+
+	public static void untrustOnIsland(Island island, UUID targetUuid) {
+		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), targetUuid);
 	}
 
 	public static ActionOutcome<Void> kick(ServerPlayerEntity executor, UUID targetUuid, MinecraftServer server) {

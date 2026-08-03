@@ -45,7 +45,9 @@ public record AdminIslandListS2C(List<IslandEntry> islands, int totalPages, int 
 	 * not the persisted {@code IslandData#currentBiomeId} tracking field — see
 	 * {@link AdminIslandBuilder}), {@code state}, {@code memberCount} (MEMBER/TRUSTED roles only,
 	 * owner not counted — same filter {@code IslandMessages}/{@code IslandSnapshotBuilder} already
-	 * apply to member lists).
+	 * apply to member lists), {@code isSpawnIsland} (NEW — true when {@code ownerUuid} is
+	 * {@code Island.SERVER_OWNER_UUID}; see {@link AdminIslandBuilder#buildList} for how this row
+	 * gets prepended ahead of pagination on page 0 with no active search).
 	 */
 	public record IslandEntry(
 			UUID ownerUuid,
@@ -55,7 +57,8 @@ public record AdminIslandListS2C(List<IslandEntry> islands, int totalPages, int 
 			String type,
 			String currentBiomeId,
 			String state,
-			int memberCount
+			int memberCount,
+			boolean isSpawnIsland
 	) {
 		public static final PacketCodec<RegistryByteBuf, IslandEntry> CODEC = PacketCodec.of(
 				(value, buf) -> {
@@ -67,6 +70,7 @@ public record AdminIslandListS2C(List<IslandEntry> islands, int totalPages, int 
 					PacketCodecs.STRING.encode(buf, value.currentBiomeId());
 					PacketCodecs.STRING.encode(buf, value.state());
 					PacketCodecs.VAR_INT.encode(buf, value.memberCount());
+					PacketCodecs.BOOL.encode(buf, value.isSpawnIsland());
 				},
 				buf -> new IslandEntry(
 						Uuids.PACKET_CODEC.decode(buf),
@@ -76,7 +80,8 @@ public record AdminIslandListS2C(List<IslandEntry> islands, int totalPages, int 
 						PacketCodecs.STRING.decode(buf),
 						PacketCodecs.STRING.decode(buf),
 						PacketCodecs.STRING.decode(buf),
-						PacketCodecs.VAR_INT.decode(buf)
+						PacketCodecs.VAR_INT.decode(buf),
+						PacketCodecs.BOOL.decode(buf)
 				)
 		);
 	}

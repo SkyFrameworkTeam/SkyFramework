@@ -109,7 +109,17 @@ public class IslandCommand {
 												.then(CommandManager.argument("size", IntegerArgumentType.integer(1))
 														.executes(IslandCommand::executeAdminSpawnResize)))
 										.then(CommandManager.literal("sethome")
-												.executes(IslandCommand::executeAdminSpawnSetHome)))
+												.executes(IslandCommand::executeAdminSpawnSetHome))
+										.then(CommandManager.literal("settings")
+												.then(CommandManager.literal("buildprotection")
+														.then(CommandManager.argument("value", BoolArgumentType.bool())
+																.executes(IslandCommand::executeAdminSpawnBuildProtection))))
+										.then(CommandManager.literal("trust")
+												.then(CommandManager.argument("player", EntityArgumentType.player())
+														.executes(IslandCommand::executeAdminSpawnTrust)))
+										.then(CommandManager.literal("untrust")
+												.then(CommandManager.argument("player", EntityArgumentType.player())
+														.executes(IslandCommand::executeAdminSpawnUntrust))))
 								.then(CommandManager.literal("list")
 										.executes(IslandCommand::executeAdminListAll)
 										.then(CommandManager.argument("player", EntityArgumentType.player())
@@ -609,6 +619,59 @@ public class IslandCommand {
 
 		source.sendFeedback(() -> Text.literal("Home de la isla de Spawn actualizado a ("
 				+ pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminSpawnBuildProtection(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		boolean value = BoolArgumentType.getBool(ctx, "value");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("La isla de Spawn todavía no existe."));
+			return 0;
+		}
+
+		IslandCoreMod.ISLAND_REGISTRY.updateIslandSetting(maybeIsland.get().getIslandId(), IslandSetting.BUILD_PROTECTION, value);
+
+		source.sendFeedback(() -> Text.literal("Protección de construcción de la isla de Spawn: " + value + "."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminSpawnTrust(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("La isla de Spawn todavía no existe."));
+			return 0;
+		}
+
+		MembershipService.trustOnIsland(maybeIsland.get(), target.getUuid());
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal(targetName + " ahora puede construir siempre en la isla de Spawn."), false);
+
+		return 1;
+	}
+
+	private static int executeAdminSpawnUntrust(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("La isla de Spawn todavía no existe."));
+			return 0;
+		}
+
+		MembershipService.untrustOnIsland(maybeIsland.get(), target.getUuid());
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal(targetName + " ya no tiene acceso especial en la isla de Spawn."), false);
 
 		return 1;
 	}

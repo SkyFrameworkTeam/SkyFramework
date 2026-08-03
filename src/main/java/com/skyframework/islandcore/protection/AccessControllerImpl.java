@@ -3,6 +3,7 @@ package com.skyframework.islandcore.protection;
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandPermission;
+import com.skyframework.islandcore.island.model.IslandSetting;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.registry.RegistryKey;
@@ -66,6 +67,15 @@ public class AccessControllerImpl implements AccessController {
 		// future upgrade, not yet part of the island — denied even for the owner.
 		if (!island.getBounds().contains(pos)) {
 			return false;
+		}
+
+		// BUILD_PROTECTION only ever relaxes BUILD/BREAK — INTERACT/CONTAINERS/ENTITIES keep
+		// following the role check unconditionally, protection setting or not. A TRUSTED/OWNER
+		// member can already build regardless of this setting via hasPermission's own role table
+		// below, so this only changes the outcome for players who'd otherwise be denied.
+		boolean isBuildOrBreak = permission == IslandPermission.BUILD || permission == IslandPermission.BREAK;
+		if (isBuildOrBreak && !island.getSetting(IslandSetting.BUILD_PROTECTION)) {
+			return true;
 		}
 
 		return island.hasPermission(playerUuid, permission);

@@ -72,6 +72,16 @@ public final class NetworkChannels {
 	public static final Identifier SPAWN_ISLAND_RESIZE_C2S = Identifier.of("islandcore", "spawn_island_resize_c2s");
 	public static final Identifier SPAWN_ISLAND_SET_HOME_C2S = Identifier.of("islandcore", "spawn_island_set_home_c2s");
 
+	// Spawn island configurable build protection (BUILD_PROTECTION IslandSetting) + its
+	// always-authorized (TRUSTED/MEMBER) player list.
+	public static final Identifier SPAWN_BUILD_PROTECTION_STATUS_REQUEST_C2S =
+			Identifier.of("islandcore", "spawn_build_protection_status_request_c2s");
+	public static final Identifier SPAWN_BUILD_PROTECTION_STATUS_S2C =
+			Identifier.of("islandcore", "spawn_build_protection_status_s2c");
+	public static final Identifier SPAWN_BUILD_PROTECTION_SET_C2S = Identifier.of("islandcore", "spawn_build_protection_set_c2s");
+	public static final Identifier SPAWN_AUTHORIZED_PLAYER_ADD_C2S = Identifier.of("islandcore", "spawn_authorized_player_add_c2s");
+	public static final Identifier SPAWN_AUTHORIZED_PLAYER_REMOVE_C2S = Identifier.of("islandcore", "spawn_authorized_player_remove_c2s");
+
 	public static final Identifier DIMENSION_LIST_REQUEST_C2S = Identifier.of("islandcore", "dimension_list_request_c2s");
 	public static final Identifier DIMENSION_LIST_S2C = Identifier.of("islandcore", "dimension_list_s2c");
 	public static final Identifier DIMENSION_DETAIL_REQUEST_C2S = Identifier.of("islandcore", "dimension_detail_request_c2s");

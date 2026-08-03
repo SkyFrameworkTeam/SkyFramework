@@ -1,5 +1,7 @@
 package com.skyframework.islandcore.net;
 
+import com.mojang.authlib.GameProfile;
+
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.network.ActionOutcome;
@@ -9,6 +11,8 @@ import com.skyframework.islandcore.dimension.model.DimensionGeneratorStyle;
 import com.skyframework.islandcore.dimension.vanilla.PendingVanillaReset;
 import com.skyframework.islandcore.island.lifecycle.IslandActionService;
 import com.skyframework.islandcore.island.lifecycle.MembershipService;
+import com.skyframework.islandcore.island.model.IslandMember;
+import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.net.admin.dimension.DimensionAdminBuilder;
 import com.skyframework.islandcore.net.admin.dimension.DimensionCreateC2S;
@@ -27,6 +31,11 @@ import com.skyframework.islandcore.net.admin.island.AdminIslandDetailRequestC2S;
 import com.skyframework.islandcore.net.admin.island.AdminIslandDetailS2C;
 import com.skyframework.islandcore.net.admin.island.AdminIslandListRequestC2S;
 import com.skyframework.islandcore.net.admin.island.AdminIslandListS2C;
+import com.skyframework.islandcore.net.admin.spawn.SpawnAuthorizedPlayerAddC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnAuthorizedPlayerRemoveC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnBuildProtectionSetC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnBuildProtectionStatusRequestC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnBuildProtectionStatusS2C;
 import com.skyframework.islandcore.net.admin.spawn.SpawnIslandCreateC2S;
 import com.skyframework.islandcore.net.admin.spawn.SpawnIslandResizeC2S;
 import com.skyframework.islandcore.net.admin.spawn.SpawnIslandSetHomeC2S;
@@ -77,6 +86,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Random;
+import java.util.UUID;
 
 public final class ServerPacketHandlers {
 
@@ -182,6 +192,11 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playC2S().register(SpawnIslandCreateC2S.ID, SpawnIslandCreateC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(SpawnIslandResizeC2S.ID, SpawnIslandResizeC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(SpawnIslandSetHomeC2S.ID, SpawnIslandSetHomeC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnBuildProtectionStatusRequestC2S.ID, SpawnBuildProtectionStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(SpawnBuildProtectionStatusS2C.ID, SpawnBuildProtectionStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnBuildProtectionSetC2S.ID, SpawnBuildProtectionSetC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnAuthorizedPlayerAddC2S.ID, SpawnAuthorizedPlayerAddC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnAuthorizedPlayerRemoveC2S.ID, SpawnAuthorizedPlayerRemoveC2S.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(DimensionListRequestC2S.ID, DimensionListRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(DimensionListS2C.ID, DimensionListS2C.CODEC);
@@ -477,6 +492,94 @@ public final class ServerPacketHandlers {
 			IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(island.getIslandId(), pos);
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
+
+		registerGuarded(SpawnBuildProtectionStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			SpawnBuildProtectionStatusS2C response = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID)
+					.map(island -> new SpawnBuildProtectionStatusS2C(
+							island.getSetting(IslandSetting.BUILD_PROTECTION),
+							buildAuthorizedPlayers(context.server(), island)))
+					.orElseGet(SpawnBuildProtectionStatusS2C::absent);
+			ServerPlayNetworking.send(player, response);
+		});
+
+		registerGuarded(SpawnBuildProtectionSetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			IslandCoreMod.ISLAND_REGISTRY.updateIslandSetting(
+					maybeIsland.get().getIslandId(), IslandSetting.BUILD_PROTECTION, payload.enabled());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(SpawnAuthorizedPlayerAddC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			Optional<UUID> targetUuid = MembershipService.resolvePlayerUuid(payload.targetName(), context.server());
+			if (targetUuid.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.TARGET_NOT_FOUND));
+				return;
+			}
+
+			MembershipService.trustOnIsland(maybeIsland.get(), targetUuid.get());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(SpawnAuthorizedPlayerRemoveC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			MembershipService.untrustOnIsland(maybeIsland.get(), payload.targetUuid());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+	}
+
+	// Same MEMBER/TRUSTED filter AdminIslandBuilder#countMembers and IslandSnapshotBuilder already
+	// apply elsewhere: the owner (here, the synthetic Island.SERVER_OWNER_UUID — not a real player)
+	// is never included.
+	private static List<SpawnBuildProtectionStatusS2C.AuthorizedPlayerEntry> buildAuthorizedPlayers(MinecraftServer server, Island island) {
+		List<SpawnBuildProtectionStatusS2C.AuthorizedPlayerEntry> entries = new ArrayList<>();
+		for (IslandMember member : island.getMembers()) {
+			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED) {
+				continue;
+			}
+			entries.add(new SpawnBuildProtectionStatusS2C.AuthorizedPlayerEntry(
+					member.playerUuid(), resolvePlayerName(server, member.playerUuid()), member.role().name()));
+		}
+		return entries;
+	}
+
+	private static String resolvePlayerName(MinecraftServer server, UUID playerUuid) {
+		return server.getUserCache().getByUuid(playerUuid).map(GameProfile::getName).orElse(playerUuid.toString());
 	}
 
 	private static void registerDimensionAdminHandlers() {

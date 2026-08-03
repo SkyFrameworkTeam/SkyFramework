@@ -36,11 +36,23 @@ public final class AdminIslandBuilder {
 	public static AdminIslandListS2C buildList(MinecraftServer server, Collection<Island> allIslands,
 			int requestedPage, int requestedPageSize, String searchQuery) {
 		int pageSize = Math.max(1, requestedPageSize);
-
-		List<Island> filtered = new ArrayList<>();
 		String needle = searchQuery == null ? "" : searchQuery.trim().toLowerCase();
+		boolean hasSearch = !needle.isEmpty();
+
+		// With no active search, the Spawn island (if it exists) is pulled out of the paginated
+		// set entirely — it never counts toward totalPages or any other page's islands — and
+		// re-added as an extra row ONLY on the resulting page 0, below. With an active search it's
+		// left in `filtered` like any other island: if "Spawn"/its owner name don't match the
+		// query, it's just filtered out like everything else, never forced to the top.
+		Island spawnIsland = null;
+		List<Island> filtered = new ArrayList<>();
 		for (Island island : allIslands) {
-			if (needle.isEmpty() || resolveName(server, island.getOwnerUuid()).toLowerCase().contains(needle)) {
+			boolean isSpawn = island.getOwnerUuid().equals(Island.SERVER_OWNER_UUID);
+			if (isSpawn && !hasSearch) {
+				spawnIsland = island;
+				continue;
+			}
+			if (!hasSearch || resolveName(server, island.getOwnerUuid()).toLowerCase().contains(needle)) {
 				filtered.add(island);
 			}
 		}
@@ -49,6 +61,9 @@ public final class AdminIslandBuilder {
 		int currentPage = totalPages == 0 ? 0 : Math.max(0, Math.min(requestedPage, totalPages - 1));
 
 		List<AdminIslandListS2C.IslandEntry> entries = new ArrayList<>();
+		if (spawnIsland != null && currentPage == 0) {
+			entries.add(buildEntry(server, spawnIsland));
+		}
 		if (totalPages > 0) {
 			int fromIndex = currentPage * pageSize;
 			int toIndex = Math.min(fromIndex + pageSize, filtered.size());
@@ -72,7 +87,8 @@ public final class AdminIslandBuilder {
 				island.getIslandType().getId(),
 				resolveLiveBiomeId(server, island),
 				island.getState().name(),
-				memberCount
+				memberCount,
+				island.getOwnerUuid().equals(Island.SERVER_OWNER_UUID)
 		);
 	}
 
