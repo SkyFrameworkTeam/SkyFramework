@@ -28,8 +28,26 @@ public final class IslandSnapshotBuilder {
 	private IslandSnapshotBuilder() {
 	}
 
-	public static IslandSnapshotS2C build(MinecraftServer server, Island island) {
+	// playerUuid is the requester (usually, but not necessarily, island.getOwnerUuid() — an
+	// incoming invite belongs to the PLAYER asking for their own snapshot, not to the island being
+	// described, so it must be threaded through explicitly rather than assumed from the island).
+	public static IslandSnapshotS2C build(MinecraftServer server, UUID playerUuid, Island island) {
 		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(island.getOwnerUuid());
+
+		int biomeCooldownRemainingSeconds = 0;
+		Instant lastBiomeChange = island.getLastBiomeChangeAt();
+		if (lastBiomeChange != null) {
+			long cooldownSeconds = IslandCoreMod.PERMISSION_PROVIDER.getBiomeCooldownSeconds(island.getOwnerUuid());
+			Instant availableAt = lastBiomeChange.plusSeconds(cooldownSeconds);
+			if (Instant.now().isBefore(availableAt)) {
+				biomeCooldownRemainingSeconds = (int) Duration.between(Instant.now(), availableAt).getSeconds();
+			}
+		}
+
+		Optional<IslandSnapshotS2C.IncomingInviteEntry> incomingInvite = IslandCoreMod.INVITE_MANAGER.getPendingInvite(playerUuid)
+				.map(invite -> new IslandSnapshotS2C.IncomingInviteEntry(
+						resolveName(server, invite.invitedByUuid()),
+						(int) Math.max(0L, Duration.between(Instant.now(), invite.expiresAt()).getSeconds())));
 
 		List<IslandSnapshotS2C.MemberEntry> members = new ArrayList<>();
 		members.add(new IslandSnapshotS2C.MemberEntry(
@@ -71,22 +89,33 @@ public final class IslandSnapshotBuilder {
 				maxSize,
 				island.getIslandType().getId(),
 				island.getCurrentBiomeId(),
+				biomeCooldownRemainingSeconds,
 				Optional.of(island.getHomeLocation()),
 				island.getState().name(),
 				members,
 				pendingInvites,
+				incomingInvite,
 				settings,
 				entities
 		);
 	}
 
 	// maxSize still comes from PermissionProvider even without an island yet, so the client can
-	// show what a future island's cap would be.
-	public static IslandSnapshotS2C buildEmpty(UUID playerUuid) {
+	// show what a future island's cap would be. An incoming invite is still checked here (unlike
+	// every other field, which is empty/default) since this is exactly the scenario
+	// InviteManager#getPendingInvite exists for: a player with no island yet who's been invited to
+	// someone else's, so they can see and accept it without needing an island of their own first.
+	public static IslandSnapshotS2C buildEmpty(MinecraftServer server, UUID playerUuid) {
 		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(playerUuid);
+
+		Optional<IslandSnapshotS2C.IncomingInviteEntry> incomingInvite = IslandCoreMod.INVITE_MANAGER.getPendingInvite(playerUuid)
+				.map(invite -> new IslandSnapshotS2C.IncomingInviteEntry(
+						resolveName(server, invite.invitedByUuid()),
+						(int) Math.max(0L, Duration.between(Instant.now(), invite.expiresAt()).getSeconds())));
+
 		return new IslandSnapshotS2C(
-				false, 0, maxSize, "", "", Optional.empty(), "",
-				List.of(), List.of(), List.of(), IslandSnapshotS2C.EntityCounts.EMPTY
+				false, 0, maxSize, "", "", 0, Optional.empty(), "",
+				List.of(), List.of(), incomingInvite, List.of(), IslandSnapshotS2C.EntityCounts.EMPTY
 		);
 	}
 

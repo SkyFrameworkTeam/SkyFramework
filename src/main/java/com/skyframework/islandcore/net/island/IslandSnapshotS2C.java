@@ -24,8 +24,10 @@ import java.util.UUID;
  * written by hand with {@link PacketCodec#of}; the nested per-entry records below stay within
  * the limit and keep their own small tuple codecs.
  *
- * <p><b>Wire format changed:</b> {@code currentBiomeId} was inserted after {@code type} — this is
- * a client/server protocol break for IslandCoreClient's own copy of this record, which needs the
+ * <p><b>Wire format changed:</b> {@code biomeCooldownRemainingSeconds} was inserted after
+ * {@code currentBiomeId} (grouped with the other biome field), and {@code incomingInvite} was
+ * inserted after {@code pendingInvites} (grouped with the other invite field) — this is a
+ * client/server protocol break for IslandCoreClient's own copy of this record, which needs the
  * matching update made separately in that project.
  */
 public record IslandSnapshotS2C(
@@ -34,10 +36,12 @@ public record IslandSnapshotS2C(
 		int maxSize,
 		String type,
 		String currentBiomeId,
+		int biomeCooldownRemainingSeconds,
 		Optional<BlockPos> home,
 		String state,
 		List<MemberEntry> members,
 		List<PendingInviteEntry> pendingInvites,
+		Optional<IncomingInviteEntry> incomingInvite,
 		List<SettingEntry> settings,
 		EntityCounts entities
 ) implements CustomPayload {
@@ -48,6 +52,10 @@ public record IslandSnapshotS2C(
 	// like collection() below has), so this stays typed over plain ByteBuf rather than
 	// RegistryByteBuf; encode/decode calls below still accept a RegistryByteBuf argument fine.
 	private static final PacketCodec<ByteBuf, Optional<BlockPos>> HOME_CODEC = PacketCodecs.optional(BlockPos.PACKET_CODEC);
+	// IncomingInviteEntry.CODEC is already typed over RegistryByteBuf (like every other nested
+	// entry here), so unlike HOME_CODEC above this needs no ByteBuf/RegistryByteBuf split.
+	private static final PacketCodec<RegistryByteBuf, Optional<IncomingInviteEntry>> INCOMING_INVITE_CODEC =
+			PacketCodecs.optional(IncomingInviteEntry.CODEC);
 	private static final PacketCodec<RegistryByteBuf, List<MemberEntry>> MEMBER_LIST_CODEC =
 			PacketCodecs.collection(ArrayList::new, MemberEntry.CODEC);
 	private static final PacketCodec<RegistryByteBuf, List<PendingInviteEntry>> PENDING_INVITE_LIST_CODEC =
@@ -62,10 +70,12 @@ public record IslandSnapshotS2C(
 				PacketCodecs.VAR_INT.encode(buf, value.maxSize());
 				PacketCodecs.STRING.encode(buf, value.type());
 				PacketCodecs.STRING.encode(buf, value.currentBiomeId());
+				PacketCodecs.VAR_INT.encode(buf, value.biomeCooldownRemainingSeconds());
 				HOME_CODEC.encode(buf, value.home());
 				PacketCodecs.STRING.encode(buf, value.state());
 				MEMBER_LIST_CODEC.encode(buf, value.members());
 				PENDING_INVITE_LIST_CODEC.encode(buf, value.pendingInvites());
+				INCOMING_INVITE_CODEC.encode(buf, value.incomingInvite());
 				SETTING_LIST_CODEC.encode(buf, value.settings());
 				EntityCounts.CODEC.encode(buf, value.entities());
 			},
@@ -75,10 +85,12 @@ public record IslandSnapshotS2C(
 					PacketCodecs.VAR_INT.decode(buf),
 					PacketCodecs.STRING.decode(buf),
 					PacketCodecs.STRING.decode(buf),
+					PacketCodecs.VAR_INT.decode(buf),
 					HOME_CODEC.decode(buf),
 					PacketCodecs.STRING.decode(buf),
 					MEMBER_LIST_CODEC.decode(buf),
 					PENDING_INVITE_LIST_CODEC.decode(buf),
+					INCOMING_INVITE_CODEC.decode(buf),
 					SETTING_LIST_CODEC.decode(buf),
 					EntityCounts.CODEC.decode(buf)
 			)
@@ -103,6 +115,18 @@ public record IslandSnapshotS2C(
 				PacketCodecs.STRING, PendingInviteEntry::targetName,
 				PacketCodecs.VAR_INT, PendingInviteEntry::expiresInSeconds,
 				PendingInviteEntry::new
+		);
+	}
+
+	// An invite where the receiving player is the INVITEE, not the island's owner (contrast
+	// PendingInviteEntry above, which lists invites the player's own island sent out). Empty
+	// (IslandSnapshotS2C#incomingInvite) means no pending incoming invite, or it already expired —
+	// InviteManager#getPendingInvite already filters that server-side.
+	public record IncomingInviteEntry(String inviterName, int expiresInSeconds) {
+		public static final PacketCodec<RegistryByteBuf, IncomingInviteEntry> CODEC = PacketCodec.tuple(
+				PacketCodecs.STRING, IncomingInviteEntry::inviterName,
+				PacketCodecs.VAR_INT, IncomingInviteEntry::expiresInSeconds,
+				IncomingInviteEntry::new
 		);
 	}
 

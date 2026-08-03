@@ -62,7 +62,7 @@ public final class ClientSyncNotifier {
 
 			ServerPlayerEntity owner = server.getPlayerManager().getPlayer(ownerUuid);
 			if (owner != null) {
-				ServerPlayNetworking.send(owner, IslandSnapshotBuilder.build(server, island));
+				ServerPlayNetworking.send(owner, IslandSnapshotBuilder.build(server, ownerUuid, island));
 			}
 		});
 	}

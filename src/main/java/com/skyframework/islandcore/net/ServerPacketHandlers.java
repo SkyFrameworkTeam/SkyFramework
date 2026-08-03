@@ -96,8 +96,8 @@ public final class ServerPacketHandlers {
 		ServerPlayNetworking.registerGlobalReceiver(IslandSnapshotRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			IslandSnapshotS2C snapshot = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid())
-					.map(island -> IslandSnapshotBuilder.build(context.server(), island))
-					.orElseGet(() -> IslandSnapshotBuilder.buildEmpty(player.getUuid()));
+					.map(island -> IslandSnapshotBuilder.build(context.server(), player.getUuid(), island))
+					.orElseGet(() -> IslandSnapshotBuilder.buildEmpty(context.server(), player.getUuid()));
 
 			ServerPlayNetworking.send(player, snapshot);
 		});
