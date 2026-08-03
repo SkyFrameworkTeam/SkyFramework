@@ -63,6 +63,7 @@ import com.skyframework.islandcore.net.teleport.TeleportStatusS2C;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 
+import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
@@ -85,15 +86,24 @@ public final class ServerPacketHandlers {
 	public static void register() {
 		registerPayloadTypes();
 
+		// Deliberately NOT routed through registerGuarded below: this is what DECIDES whether a
+		// connection is protocol-compatible in the first place, so it must always be processed.
 		ServerPlayNetworking.registerGlobalReceiver(ClientHandshakeC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ClientSyncNotifier.markHandshakeCompleted(player.getUuid());
 
+			boolean protocolCompatible = payload.protocolVersion() == NetworkChannels.PROTOCOL_VERSION;
+			if (protocolCompatible) {
+				ClientSyncNotifier.markProtocolCompatible(player.getUuid());
+			} else {
+				ClientSyncNotifier.markProtocolIncompatible(player.getUuid());
+			}
+
 			boolean isOperator = player.hasPermissionLevel(2);
-			ServerPlayNetworking.send(player, new ServerHandshakeS2C(NetworkChannels.PROTOCOL_VERSION, isOperator));
+			ServerPlayNetworking.send(player, new ServerHandshakeS2C(NetworkChannels.PROTOCOL_VERSION, protocolCompatible, isOperator));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(IslandSnapshotRequestC2S.ID, (payload, context) -> {
+		registerGuarded(IslandSnapshotRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			IslandSnapshotS2C snapshot = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid())
 					.map(island -> IslandSnapshotBuilder.build(context.server(), player.getUuid(), island))
@@ -111,6 +121,25 @@ public final class ServerPacketHandlers {
 		registerSpawnAdminHandlers();
 		registerDimensionAdminHandlers();
 		registerVanillaResetAdminHandlers();
+	}
+
+	// Every C2S receiver except the handshake itself (see the comment above that registration)
+	// routes through here: once a connection is marked protocol-incompatible (mismatched
+	// PROTOCOL_VERSION reported at handshake time), every later packet from it is rejected with
+	// ActionResultS2C.fail instead of reaching the real handler — a fallback in case the client
+	// ignores ServerHandshakeS2C#protocolCompatible=false and keeps talking anyway. Sending a real
+	// ActionResultS2C (rather than silently dropping) matters here specifically because some
+	// callers are sitting in a client-side PendingActionTracker.await() — silence would leave that
+	// waiting forever instead of surfacing a clear error.
+	private static <T extends CustomPayload> void registerGuarded(CustomPayload.Id<T> id, ServerPlayNetworking.PlayPayloadHandler<T> handler) {
+		ServerPlayNetworking.registerGlobalReceiver(id, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (ClientSyncNotifier.isProtocolIncompatible(player.getUuid())) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PROTOCOL_MISMATCH));
+				return;
+			}
+			handler.receive(payload, context);
+		});
 	}
 
 	private static void registerPayloadTypes() {
@@ -172,31 +201,31 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerIslandActionHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(IslandCreateC2S.ID, (payload, context) -> {
+		registerGuarded(IslandCreateC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = IslandActionService.create(player, context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(IslandUpgradeC2S.ID, (payload, context) -> {
+		registerGuarded(IslandUpgradeC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = IslandActionService.upgrade(player.getUuid());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(IslandDeleteRequestC2S.ID, (payload, context) -> {
+		registerGuarded(IslandDeleteRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<Void> outcome = IslandActionService.requestDelete(player.getUuid());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(IslandDeleteConfirmC2S.ID, (payload, context) -> {
+		registerGuarded(IslandDeleteConfirmC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<Void> outcome = IslandActionService.confirmDelete(player.getUuid());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(IslandSettingsUpdateC2S.ID, (payload, context) -> {
+		registerGuarded(IslandSettingsUpdateC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<Void> outcome = IslandSetting.fromId(payload.settingId())
 					.map(setting -> IslandActionService.updateSetting(player.getUuid(), setting, payload.value()))
@@ -204,7 +233,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(IslandBiomeChangeC2S.ID, (payload, context) -> {
+		registerGuarded(IslandBiomeChangeC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = parseBiomeId(payload.biomeId())
 					.map(biomeId -> IslandActionService.changeBiome(player, biomeId, context.server()))
@@ -225,25 +254,25 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerMembershipHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(MemberInviteC2S.ID, (payload, context) -> {
+		registerGuarded(MemberInviteC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = MembershipService.inviteByName(player, payload.targetName(), context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(MemberInviteAcceptC2S.ID, (payload, context) -> {
+		registerGuarded(MemberInviteAcceptC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = MembershipService.acceptInvite(player, context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(MemberTrustC2S.ID, (payload, context) -> {
+		registerGuarded(MemberTrustC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<Void> outcome = MembershipService.trust(player, payload.targetUuid());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(MemberRemoveC2S.ID, (payload, context) -> {
+		registerGuarded(MemberRemoveC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<Void> outcome = MembershipService.removeMember(player, payload.targetUuid(), context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
@@ -251,13 +280,13 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerTeleportHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(TeleportRequestC2S.ID, (payload, context) -> {
+		registerGuarded(TeleportRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = dispatchTeleportRequest(player, payload.type(), context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(TeleportStatusRequestC2S.ID, (payload, context) -> {
+		registerGuarded(TeleportStatusRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ServerPlayNetworking.send(player, TeleportStatusBuilder.build(player));
 		});
@@ -280,7 +309,7 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerBiomeTierHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(BiomeTiersRequestC2S.ID, (payload, context) -> {
+		registerGuarded(BiomeTiersRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ServerPlayNetworking.send(player, BiomeTiersBuilder.build(player));
 		});
@@ -303,7 +332,7 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerAdminIslandHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(AdminIslandListRequestC2S.ID, (payload, context) -> {
+		registerGuarded(AdminIslandListRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -314,7 +343,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, response);
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(AdminIslandDetailRequestC2S.ID, (payload, context) -> {
+		registerGuarded(AdminIslandDetailRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -329,7 +358,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, AdminIslandBuilder.buildDetail(context.server(), maybeIsland.get()));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(AdminIslandDeleteC2S.ID, (payload, context) -> {
+		registerGuarded(AdminIslandDeleteC2S.ID, (payload, context) -> {
 			ServerPlayerEntity admin = context.player();
 			if (rejectIfNotOperator(admin)) {
 				return;
@@ -351,7 +380,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(admin, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(AdminIslandDeleteConfirmC2S.ID, (payload, context) -> {
+		registerGuarded(AdminIslandDeleteConfirmC2S.ID, (payload, context) -> {
 			ServerPlayerEntity admin = context.player();
 			if (rejectIfNotOperator(admin)) {
 				return;
@@ -371,7 +400,7 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerSpawnAdminHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(SpawnStatusRequestC2S.ID, (payload, context) -> {
+		registerGuarded(SpawnStatusRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -383,7 +412,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, response);
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(SpawnIslandCreateC2S.ID, (payload, context) -> {
+		registerGuarded(SpawnIslandCreateC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -399,7 +428,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(SpawnIslandResizeC2S.ID, (payload, context) -> {
+		registerGuarded(SpawnIslandResizeC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -424,7 +453,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(SpawnIslandSetHomeC2S.ID, (payload, context) -> {
+		registerGuarded(SpawnIslandSetHomeC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -451,7 +480,7 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerDimensionAdminHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(DimensionListRequestC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionListRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -464,7 +493,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, new DimensionListS2C(entries));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(DimensionDetailRequestC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionDetailRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -480,7 +509,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, DimensionAdminBuilder.buildDetail(maybeDimension.get()));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(DimensionCreateC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionCreateC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -512,7 +541,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(DimensionDeleteC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionDeleteC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -537,7 +566,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(DimensionDeleteConfirmC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionDeleteConfirmC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -555,7 +584,7 @@ public final class ServerPacketHandlers {
 					: ActionResultS2C.fail(ActionReason.NO_PENDING_CONFIRMATION));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(DimensionRegenerateC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionRegenerateC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -582,7 +611,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(DimensionRegenerateConfirmC2S.ID, (payload, context) -> {
+		registerGuarded(DimensionRegenerateConfirmC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -613,7 +642,7 @@ public final class ServerPacketHandlers {
 	}
 
 	private static void registerVanillaResetAdminHandlers() {
-		ServerPlayNetworking.registerGlobalReceiver(VanillaResetListRequestC2S.ID, (payload, context) -> {
+		registerGuarded(VanillaResetListRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -628,7 +657,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, new VanillaResetListS2C(entries));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(VanillaResetQueueC2S.ID, (payload, context) -> {
+		registerGuarded(VanillaResetQueueC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -653,7 +682,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(VanillaResetConfirmC2S.ID, (payload, context) -> {
+		registerGuarded(VanillaResetConfirmC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;
@@ -672,7 +701,7 @@ public final class ServerPacketHandlers {
 					: ActionResultS2C.fail(ActionReason.NO_PENDING_CONFIRMATION));
 		});
 
-		ServerPlayNetworking.registerGlobalReceiver(VanillaResetCancelC2S.ID, (payload, context) -> {
+		registerGuarded(VanillaResetCancelC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			if (rejectIfNotOperator(player)) {
 				return;

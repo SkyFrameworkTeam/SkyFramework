@@ -9,6 +9,20 @@ import net.minecraft.util.Identifier;
 // "islandcoreclient": the server owns this protocol.
 public final class NetworkChannels {
 
+	// Bump this by 1 every time the binary format of ANY existing payload in this package changes —
+	// a field added/removed/reordered, a type swapped, anything that changes what bytes go on the
+	// wire (e.g. IslandSnapshotS2C's 11 -> 13 field change). Do it in the SAME change that alters
+	// the format, not as an afterthought. ClientHandshakeC2S/ServerHandshakeS2C carry this value so
+	// each side can tell whether the other was built against the wire format it expects — see
+	// ServerHandshakeS2C#protocolCompatible. Bumping it server-side only helps if the client's own
+	// mirror constant (network.handshake package there) is bumped to match in the same release;
+	// announce that in the client's chat/changelog whenever this changes, since nothing here can
+	// notify that codebase automatically.
+	//
+	// Exception: this constant cannot protect ClientHandshakeC2S/ServerHandshakeS2C's OWN format
+	// (that would require decoding the payload before knowing whether it's safe to decode it) — a
+	// change to the handshake payloads themselves still requires shipping server and client
+	// together, the same as every codec change in this project always has.
 	public static final int PROTOCOL_VERSION = 1;
 
 	public static final Identifier HANDSHAKE_C2S = Identifier.of("islandcore", "handshake_c2s");

@@ -28,6 +28,14 @@ public final class ClientSyncNotifier {
 	// other path (a command, an admin action) can still push a fresh snapshot to them.
 	private static final Set<UUID> handshakeCompletedPlayers = ConcurrentHashMap.newKeySet();
 
+	// Players whose ClientHandshakeC2S reported a protocolVersion that didn't match
+	// NetworkChannels.PROTOCOL_VERSION. In-memory, per connection only (cleared on disconnect, same
+	// as handshakeCompletedPlayers above) — a later reconnect (e.g. after updating the client mod)
+	// gets a fresh handshake and isn't stuck incompatible forever. ServerPacketHandlers'
+	// registerGuarded consults this to reject every subsequent packet from that connection, as a
+	// fallback in case the client ignores ServerHandshakeS2C#protocolCompatible=false.
+	private static final Set<UUID> protocolIncompatiblePlayers = ConcurrentHashMap.newKeySet();
+
 	@Nullable
 	private static MinecraftServer server;
 
@@ -39,13 +47,32 @@ public final class ClientSyncNotifier {
 		ServerLifecycleEvents.SERVER_STOPPING.register(stoppingServer -> {
 			server = null;
 			handshakeCompletedPlayers.clear();
+			protocolIncompatiblePlayers.clear();
 		});
-		ServerPlayConnectionEvents.DISCONNECT.register((handler, disconnectedServer) ->
-				handshakeCompletedPlayers.remove(handler.getPlayer().getUuid()));
+		ServerPlayConnectionEvents.DISCONNECT.register((handler, disconnectedServer) -> {
+			UUID playerUuid = handler.getPlayer().getUuid();
+			handshakeCompletedPlayers.remove(playerUuid);
+			protocolIncompatiblePlayers.remove(playerUuid);
+		});
 	}
 
 	public static void markHandshakeCompleted(UUID playerUuid) {
 		handshakeCompletedPlayers.add(playerUuid);
+	}
+
+	// Called by the handshake handler once per handshake, with whichever result it actually
+	// computed — always one or the other, so a player can never be left over as incompatible from a
+	// stale earlier handshake once a new one completes successfully.
+	public static void markProtocolIncompatible(UUID playerUuid) {
+		protocolIncompatiblePlayers.add(playerUuid);
+	}
+
+	public static void markProtocolCompatible(UUID playerUuid) {
+		protocolIncompatiblePlayers.remove(playerUuid);
+	}
+
+	public static boolean isProtocolIncompatible(UUID playerUuid) {
+		return protocolIncompatiblePlayers.contains(playerUuid);
 	}
 
 	// Not called by anything yet this sprint — see the class javadoc.

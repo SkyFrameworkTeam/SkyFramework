@@ -168,6 +168,13 @@ public final class ActionReason {
 	// (DIMENSION_NOT_FOUND) was specified.
 	public static final String DIMENSION_STATE_CONFLICT = "error.dimension_state_conflict";
 
+	// Sent instead of actually processing any C2S packet from a player whose ClientHandshakeC2S
+	// reported a protocolVersion that doesn't match NetworkChannels.PROTOCOL_VERSION (see
+	// ClientSyncNotifier#isProtocolIncompatible and ServerPacketHandlers#registerGuarded). The
+	// handshake reply itself already carries protocolCompatible=false as the primary warning; this
+	// is the fallback for a client that ignores it and keeps sending packets anyway.
+	public static final String PROTOCOL_MISMATCH = "error.protocol_mismatch";
+
 	private ActionReason() {
 	}
 }
