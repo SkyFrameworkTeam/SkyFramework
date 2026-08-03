@@ -105,14 +105,32 @@ tasks.register('release') {
 		}.join('\n') + '\n'
 		logger.lifecycle("mod_version: ${oldVersion} -> ${newVersion}")
 
-		def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
-		exec {
-			commandLine isWindows ? ['cmd', '/c', 'gradlew.bat', 'build'] : ['./gradlew', 'build']
+		// Plain ProcessBuilder, not Gradle's exec {}/project.exec {} — both are deprecated/removed
+		// in current Gradle for configuration-cache reasons (the "proper" replacement is injecting
+		// ExecOperations into a real task class, which is overkill for this simple sequential
+		// script). ProcessBuilder has no such churn risk across Gradle versions.
+		def runCommand = { List<String> cmd ->
+			def process = new ProcessBuilder(cmd)
+					.directory(projectDir)
+					.redirectErrorStream(true)
+					.start()
+			process.inputStream.eachLine { logger.lifecycle(it) }
+			int exitCode = process.waitFor()
+			if (exitCode != 0) {
+				throw new GradleException("Command failed (exit ${exitCode}): ${cmd.join(' ')}")
+			}
 		}
 
-		exec { commandLine 'git', 'add', 'gradle.properties' }
-		exec { commandLine 'git', 'commit', '-m', "Release v${newVersion}" }
-		exec { commandLine 'git', 'tag', '-a', "v${newVersion}", '-m', "Release v${newVersion}" }
+		// Absolute path to the wrapper script, not a bare "gradlew.bat"/"./gradlew" name: this
+		// environment has NoDefaultCurrentDirectoryInExePath set, which makes cmd unable to find
+		// an unqualified gradlew.bat even when directory(projectDir) is that very folder. An
+		// absolute path sidesteps that lookup entirely.
+		def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
+		def wrapperPath = new File(projectDir, isWindows ? 'gradlew.bat' : 'gradlew').absolutePath
+		runCommand(isWindows ? ['cmd', '/c', wrapperPath, 'build'] : [wrapperPath, 'build'])
+		runCommand(['git', 'add', 'gradle.properties'])
+		runCommand(['git', 'commit', '-m', "Release v${newVersion}"])
+		runCommand(['git', 'tag', '-a', "v${newVersion}", '-m', "Release v${newVersion}"])
 
 		logger.lifecycle("Release v${newVersion} committed and tagged LOCALLY. Nothing has been pushed.")
 		logger.lifecycle("When you're ready: git push origin main --tags")
