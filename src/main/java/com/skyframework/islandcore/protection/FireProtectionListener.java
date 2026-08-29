@@ -2,7 +2,8 @@ package com.skyframework.islandcore.protection;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
-import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.protection.flag.FlagRegistry;
+import com.skyframework.islandcore.protection.flag.FlagResolver;
 
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
@@ -29,6 +30,6 @@ public final class FireProtectionListener {
 		// Inside the islands dimension, no island claims pos: nothing to protect there,
 		// behaves like vanilla (allowed).
 		Optional<Island> island = IslandCoreMod.ISLAND_REGISTRY.getIslandAt(pos);
-		return island.map(value -> value.getSetting(IslandSetting.FIRE_SPREAD)).orElse(true);
+		return island.map(value -> FlagResolver.resolveGlobal(value, FlagRegistry.FIRE_SPREAD)).orElse(true);
 	}
 }

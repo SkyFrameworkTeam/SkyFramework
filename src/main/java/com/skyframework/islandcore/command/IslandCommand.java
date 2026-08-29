@@ -17,7 +17,14 @@ import com.skyframework.islandcore.api.network.ActionReason;
 import com.skyframework.islandcore.api.permission.IslandPermissions;
 import com.skyframework.islandcore.island.lifecycle.IslandActionService;
 import com.skyframework.islandcore.island.lifecycle.MembershipService;
+import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.protection.exception.ExceptionGroup;
+import com.skyframework.islandcore.protection.flag.Flag;
+import com.skyframework.islandcore.protection.flag.FlagCategory;
+import com.skyframework.islandcore.protection.flag.FlagRegistry;
+import com.skyframework.islandcore.protection.flag.FlagResolver;
+import com.skyframework.islandcore.protection.flag.TriState;
 import com.skyframework.islandcore.teleport.SafeLandingChecker;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -31,7 +38,9 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -39,6 +48,7 @@ import net.minecraft.world.World;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -51,6 +61,7 @@ public class IslandCommand {
 			RegistryKey.of(RegistryKeys.WORLD, Identifier.of("islandcore", "islands"));
 
 	private static final List<String> SETTING_NAMES = List.of("firespread", "pvp", "mobdamage");
+	private static final List<String> TRISTATE_NAMES = List.of("allow", "deny", "default");
 
 	private IslandCommand() {
 	}
@@ -99,6 +110,22 @@ public class IslandCommand {
 								.then(CommandManager.argument("biome", IdentifierArgumentType.identifier())
 										.suggests(IslandCommand::suggestBiomes)
 										.executes(IslandCommand::executeBiome)))
+						.then(CommandManager.literal("flags")
+								.executes(IslandCommand::executeFlagsList)
+								.then(CommandManager.literal("set")
+										.then(CommandManager.argument("flag", StringArgumentType.word())
+												.suggests(IslandCommand::suggestFlagIds)
+												.then(CommandManager.argument("value", StringArgumentType.word())
+														.suggests((ctx, builder) -> CommandSource.suggestMatching(TRISTATE_NAMES, builder))
+														.executes(IslandCommand::executeFlagsSet)))))
+						.then(CommandManager.literal("exceptions")
+								.then(CommandManager.literal("list")
+										.executes(IslandCommand::executeExceptionsList))
+								.then(CommandManager.literal("set")
+										.then(CommandManager.argument("group", StringArgumentType.word())
+												.suggests(IslandCommand::suggestExceptionGroupIds)
+												.then(CommandManager.argument("value", BoolArgumentType.bool())
+														.executes(IslandCommand::executeExceptionsSet)))))
 						.then(CommandManager.literal("admin")
 								.requires(source -> source.hasPermissionLevel(2))
 								.then(CommandManager.literal("spawn")
@@ -119,7 +146,26 @@ public class IslandCommand {
 														.executes(IslandCommand::executeAdminSpawnTrust)))
 										.then(CommandManager.literal("untrust")
 												.then(CommandManager.argument("player", EntityArgumentType.player())
-														.executes(IslandCommand::executeAdminSpawnUntrust))))
+														.executes(IslandCommand::executeAdminSpawnUntrust)))
+										.then(CommandManager.literal("exceptions")
+												.then(CommandManager.literal("set")
+														.then(CommandManager.argument("group", StringArgumentType.word())
+																.suggests(IslandCommand::suggestExceptionGroupIds)
+																.then(CommandManager.argument("value", BoolArgumentType.bool())
+																		.executes(IslandCommand::executeAdminSpawnExceptionsSet))))))
+								.then(CommandManager.literal("flags")
+										.then(CommandManager.literal("set-default")
+												.then(CommandManager.argument("flag", StringArgumentType.word())
+														.suggests(IslandCommand::suggestFlagIds)
+														.then(CommandManager.argument("value", StringArgumentType.word())
+																.suggests((ctx, builder) -> CommandSource.suggestMatching(List.of("allow", "deny"), builder))
+																.executes(IslandCommand::executeAdminFlagsSetDefault)))))
+								.then(CommandManager.literal("exceptions")
+										.then(CommandManager.literal("set-default")
+												.then(CommandManager.argument("group", StringArgumentType.word())
+														.suggests(IslandCommand::suggestExceptionGroupIds)
+														.then(CommandManager.argument("value", BoolArgumentType.bool())
+																.executes(IslandCommand::executeAdminExceptionsSetDefault)))))
 								.then(CommandManager.literal("list")
 										.executes(IslandCommand::executeAdminListAll)
 										.then(CommandManager.argument("player", EntityArgumentType.player())
@@ -256,22 +302,22 @@ public class IslandCommand {
 		return 1;
 	}
 
+	// Delegates entirely to IslandActionService#updateLegacySetting — the SAME method
+	// IslandSettingsUpdateC2S's network handler calls — so this command never decides on its own
+	// whether a setting id maps to the new Flag system or the old IslandSetting one; that mapping
+	// lives in exactly one place, and both paths stay convergent by construction.
 	private static int executeSettings(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
 		ServerCommandSource source = ctx.getSource();
 		ServerPlayerEntity player = source.getPlayerOrThrow();
 		String settingName = StringArgumentType.getString(ctx, "setting");
 		boolean value = BoolArgumentType.getBool(ctx, "value");
 
-		Optional<IslandSetting> maybeSetting = IslandSetting.fromId(settingName);
-		if (maybeSetting.isEmpty()) {
-			source.sendError(Text.literal("Ajuste desconocido. Ajustes disponibles: firespread, pvp, mobdamage."));
-			return 0;
-		}
-
-		ActionOutcome<Void> outcome = IslandActionService.updateSetting(player.getUuid(), maybeSetting.get(), value);
+		ActionOutcome<Void> outcome = IslandActionService.updateLegacySetting(player.getUuid(), settingName, value);
 		if (!outcome.success()) {
 			if (ActionReason.NO_ISLAND.equals(outcome.reason())) {
 				source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			} else if (ActionReason.UNKNOWN_SETTING.equals(outcome.reason())) {
+				source.sendError(Text.literal("Ajuste desconocido. Ajustes disponibles: firespread, pvp, mobdamage."));
 			} else {
 				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus ajustes."));
 			}
@@ -281,6 +327,257 @@ public class IslandCommand {
 		source.sendFeedback(() -> Text.literal(settingName.toLowerCase() + " = " + value), false);
 
 		return 1;
+	}
+
+	private static int executeFlagsList(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		source.sendFeedback(() -> Text.literal("=== Flags de tu isla ===").formatted(Formatting.BOLD, Formatting.AQUA), false);
+
+		IslandMessages.sectionTitle(source, "Permisos por Rol", Formatting.GOLD);
+		IslandRole[] roles = IslandRole.values();
+		for (Flag flag : FlagRegistry.all()) {
+			if (flag.getCategory() != FlagCategory.ROLE_BASED) {
+				continue;
+			}
+
+			String header = flagDisplayName(flag) + ":";
+			source.sendFeedback(() -> Text.literal(header).formatted(Formatting.WHITE), false);
+
+			// 3 roles per line (OWNER/MEMBER/TRUSTED, then VISITOR/DENIED) rather than one long
+			// line: easier to scan, and each ALLOW/DENY value is colored green/red.
+			for (int i = 0; i < roles.length; i += 3) {
+				int lineEnd = Math.min(i + 3, roles.length);
+				MutableText line = Text.literal("  ");
+				for (int j = i; j < lineEnd; j++) {
+					IslandRole role = roles[j];
+					TriState value = FlagResolver.resolveForRole(island, role, flag);
+					line.append(roleValueText(role, value));
+					if (j < lineEnd - 1) {
+						line.append(Text.literal("   "));
+					}
+				}
+				source.sendFeedback(() -> line, false);
+			}
+		}
+
+		IslandMessages.sectionTitle(source, "Ajustes Generales", Formatting.LIGHT_PURPLE);
+		for (Flag flag : FlagRegistry.all()) {
+			if (flag.getCategory() != FlagCategory.ISLAND_GLOBAL) {
+				continue;
+			}
+			String valueText = FlagResolver.resolveGlobal(island, flag) ? "allow" : "deny";
+			String label = flagDisplayName(flag) + ": ";
+			source.sendFeedback(() -> IslandMessages.labeled(label, valueText), false);
+		}
+
+		return 1;
+	}
+
+	private static Text roleValueText(IslandRole role, TriState value) {
+		Formatting valueColor = value == TriState.ALLOW ? Formatting.GREEN : Formatting.RED;
+		return Text.literal(role.name() + ": ").formatted(Formatting.GRAY)
+				.append(Text.literal(value.name()).formatted(valueColor));
+	}
+
+	// Presentation only (Sprint "mejora visual de /island flags") — the flag ids themselves
+	// (used by /island flags set and stored on disk) are unchanged.
+	private static String flagDisplayName(Flag flag) {
+		return switch (flag.getId()) {
+			case "build" -> "Construcción";
+			case "break" -> "Romper bloques";
+			case "interact" -> "Interactuar";
+			case "containers" -> "Contenedores";
+			case "entities" -> "Entidades";
+			case "redstone" -> "Redstone";
+			case "fire_spread" -> "Propagación de fuego";
+			case "pvp_damage" -> "Daño PvP";
+			case "mob_damage" -> "Daño de mobs";
+			default -> flag.getId();
+		};
+	}
+
+	private static int executeFlagsSet(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		String flagId = StringArgumentType.getString(ctx, "flag");
+		String valueArg = StringArgumentType.getString(ctx, "value");
+
+		Optional<Flag> maybeFlag = FlagRegistry.get(flagId);
+		if (maybeFlag.isEmpty()) {
+			source.sendError(Text.literal("Flag desconocido: " + flagId));
+			return 0;
+		}
+
+		TriState value;
+		try {
+			value = TriState.valueOf(valueArg.toUpperCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			source.sendError(Text.literal("Valor inválido: " + valueArg + ". Usa allow, deny o default."));
+			return 0;
+		}
+
+		ActionOutcome<Void> outcome = IslandActionService.updateFlag(player.getUuid(), maybeFlag.get(), value);
+		if (!outcome.success()) {
+			if (ActionReason.NO_ISLAND.equals(outcome.reason())) {
+				source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			} else {
+				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus flags."));
+			}
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal(flagId + " = " + valueArg.toLowerCase(Locale.ROOT)), false);
+
+		return 1;
+	}
+
+	private static int executeAdminFlagsSetDefault(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		String flagId = StringArgumentType.getString(ctx, "flag");
+		String valueArg = StringArgumentType.getString(ctx, "value");
+
+		if (FlagRegistry.get(flagId).isEmpty()) {
+			source.sendError(Text.literal("Flag desconocido: " + flagId));
+			return 0;
+		}
+
+		TriState value;
+		try {
+			value = TriState.valueOf(valueArg.toUpperCase(Locale.ROOT));
+			if (value == TriState.DEFAULT) {
+				throw new IllegalArgumentException("default no es válido aquí");
+			}
+		} catch (IllegalArgumentException e) {
+			source.sendError(Text.literal("Valor inválido: " + valueArg + ". Usa allow o deny."));
+			return 0;
+		}
+
+		IslandCoreMod.SERVER_FLAG_DEFAULTS.setDefault(flagId, value);
+
+		source.sendFeedback(() -> Text.literal(
+				"Valor por defecto del servidor para " + flagId + " = " + valueArg.toLowerCase(Locale.ROOT)), false);
+
+		return 1;
+	}
+
+	private static int executeExceptionsList(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			return 0;
+		}
+
+		Island island = maybeIsland.get();
+		List<ExceptionGroup> groups = IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getAllGroups();
+		if (groups.isEmpty()) {
+			source.sendFeedback(() -> Text.literal("No hay ningún grupo de excepción configurado."), false);
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("=== Grupos de excepción de tu isla ==="), false);
+		for (ExceptionGroup group : groups) {
+			Boolean override = island.getExceptionGroupOverride(group.getId());
+			boolean effective = override != null ? override : group.isDefaultEnabled();
+			String configurableSuffix = group.isOwnerConfigurable() ? "" : " (solo gestionable por un admin)";
+			source.sendFeedback(() -> Text.literal(group.getId() + " (" + group.getCategory() + "): "
+					+ (effective ? "activo" : "inactivo") + configurableSuffix), false);
+		}
+
+		return groups.size();
+	}
+
+	private static int executeExceptionsSet(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		String groupId = StringArgumentType.getString(ctx, "group");
+		boolean value = BoolArgumentType.getBool(ctx, "value");
+
+		Optional<ExceptionGroup> maybeGroup = IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(groupId);
+		if (maybeGroup.isEmpty()) {
+			source.sendError(Text.literal("Grupo de excepción desconocido: " + groupId));
+			return 0;
+		}
+
+		if (!maybeGroup.get().isOwnerConfigurable()) {
+			source.sendError(Text.literal("El grupo " + groupId + " solo puede gestionarlo un administrador."));
+			return 0;
+		}
+
+		ActionOutcome<Void> outcome = IslandActionService.updateExceptionGroup(player.getUuid(), groupId, value);
+		if (!outcome.success()) {
+			if (ActionReason.NO_ISLAND.equals(outcome.reason())) {
+				source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			} else {
+				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus grupos de excepción."));
+			}
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal(groupId + " = " + value), false);
+
+		return 1;
+	}
+
+	private static int executeAdminExceptionsSetDefault(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		String groupId = StringArgumentType.getString(ctx, "group");
+		boolean value = BoolArgumentType.getBool(ctx, "value");
+
+		try {
+			IslandCoreMod.EXCEPTION_GROUP_REGISTRY.setDefaultEnabled(groupId, value);
+		} catch (IllegalArgumentException e) {
+			source.sendError(Text.literal(e.getMessage()));
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal("Valor por defecto del servidor para el grupo " + groupId + " = " + value), false);
+
+		return 1;
+	}
+
+	private static int executeAdminSpawnExceptionsSet(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		String groupId = StringArgumentType.getString(ctx, "group");
+		boolean value = BoolArgumentType.getBool(ctx, "value");
+
+		if (IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(groupId).isEmpty()) {
+			source.sendError(Text.literal("Grupo de excepción desconocido: " + groupId));
+			return 0;
+		}
+
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("La isla de Spawn todavía no existe."));
+			return 0;
+		}
+
+		IslandCoreMod.ISLAND_REGISTRY.updateExceptionGroupOverride(maybeIsland.get().getIslandId(), groupId, value);
+
+		source.sendFeedback(() -> Text.literal(groupId + " = " + value + " en la isla de Spawn."), false);
+
+		return 1;
+	}
+
+	private static CompletableFuture<Suggestions> suggestFlagIds(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
+		List<String> ids = FlagRegistry.all().stream().map(Flag::getId).toList();
+		return CommandSource.suggestMatching(ids, builder);
+	}
+
+	private static CompletableFuture<Suggestions> suggestExceptionGroupIds(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
+		List<String> ids = IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getAllGroups().stream().map(ExceptionGroup::getId).toList();
+		return CommandSource.suggestMatching(ids, builder);
 	}
 
 	private static int executeDelete(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {

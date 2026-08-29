@@ -8,6 +8,10 @@ import com.skyframework.islandcore.api.permission.IslandPermissions;
 import com.skyframework.islandcore.island.biome.BiomeTier;
 import com.skyframework.islandcore.island.generation.BasicPlatformGenerator;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.protection.flag.Flag;
+import com.skyframework.islandcore.protection.flag.FlagCategory;
+import com.skyframework.islandcore.protection.flag.FlagRegistry;
+import com.skyframework.islandcore.protection.flag.TriState;
 
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
@@ -23,6 +27,7 @@ import net.minecraft.world.biome.Biome;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -108,6 +113,72 @@ public final class IslandActionService {
 		}
 
 		IslandCoreMod.ISLAND_REGISTRY.updateIslandSetting(island.getIslandId(), setting, value);
+		return ActionOutcome.ok();
+	}
+
+	// The SINGLE entry point both /island settings (IslandCommand#executeSettings) and the
+	// IslandSettingsUpdateC2S network handler call for a legacy setting id (firespread/pvp/
+	// mobdamage/buildprotection) — neither caller duplicates the id-to-flag mapping or decides
+	// between updateFlag/updateSetting itself, so the two paths can never drift onto different
+	// storage again. firespread/pvp/mobdamage are rerouted to the new Flag override system
+	// (fire_spread/pvp_damage/mob_damage, ISLAND_GLOBAL); buildprotection is deliberately left on
+	// the old IslandSetting-keyed path — it was never part of the "motor de flags" migration.
+	public static ActionOutcome<Void> updateLegacySetting(UUID playerUuid, String settingId, boolean value) {
+		String flagId = flagIdForLegacySetting(settingId);
+		if (flagId != null) {
+			Flag flag = FlagRegistry.get(flagId).orElseThrow();
+			return updateFlag(playerUuid, flag, TriState.fromBoolean(value));
+		}
+
+		Optional<IslandSetting> maybeSetting = IslandSetting.fromId(settingId);
+		if (maybeSetting.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.UNKNOWN_SETTING);
+		}
+		return updateSetting(playerUuid, maybeSetting.get(), value);
+	}
+
+	private static String flagIdForLegacySetting(String settingId) {
+		return switch (settingId.toLowerCase(Locale.ROOT)) {
+			case "firespread" -> "fire_spread";
+			case "pvp" -> "pvp_damage";
+			case "mobdamage" -> "mob_damage";
+			default -> null;
+		};
+	}
+
+	// Shared by both /island flags set (any flag) and updateLegacySetting above — dispatches to the
+	// matching override map by the flag's own category.
+	public static ActionOutcome<Void> updateFlag(UUID playerUuid, Flag flag, TriState value) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		if (!island.getOwnerUuid().equals(playerUuid)) {
+			return ActionOutcome.fail(ActionReason.NOT_OWNER);
+		}
+
+		if (flag.getCategory() == FlagCategory.ROLE_BASED) {
+			IslandCoreMod.ISLAND_REGISTRY.updateRoleFlagOverride(island.getIslandId(), flag.getId(), value);
+		} else {
+			IslandCoreMod.ISLAND_REGISTRY.updateGlobalFlagOverride(island.getIslandId(), flag.getId(), value);
+		}
+		return ActionOutcome.ok();
+	}
+
+	public static ActionOutcome<Void> updateExceptionGroup(UUID playerUuid, String groupId, boolean value) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		if (!island.getOwnerUuid().equals(playerUuid)) {
+			return ActionOutcome.fail(ActionReason.NOT_OWNER);
+		}
+
+		IslandCoreMod.ISLAND_REGISTRY.updateExceptionGroupOverride(island.getIslandId(), groupId, value);
 		return ActionOutcome.ok();
 	}
 

@@ -36,6 +36,8 @@ import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
 import com.skyframework.islandcore.protection.DamageProtectionListener;
 import com.skyframework.islandcore.protection.ProtectionListeners;
+import com.skyframework.islandcore.protection.exception.ExceptionGroupRegistry;
+import com.skyframework.islandcore.protection.flag.ServerFlagDefaults;
 import com.skyframework.islandcore.rtp.RtpCommand;
 import com.skyframework.islandcore.rtp.RtpConfig;
 import com.skyframework.islandcore.spawn.SpawnCommand;
@@ -93,6 +95,8 @@ public class IslandCoreMod implements ModInitializer {
 	public static VanillaResetConfig VANILLA_RESET_CONFIG;
 	public static VanillaResetService VANILLA_RESET_SERVICE;
 	public static FarmingConfig FARMING_CONFIG;
+	public static ServerFlagDefaults SERVER_FLAG_DEFAULTS;
+	public static ExceptionGroupRegistry EXCEPTION_GROUP_REGISTRY;
 
 	@Override
 	public void onInitialize() {
@@ -123,6 +127,8 @@ public class IslandCoreMod implements ModInitializer {
 		VANILLA_RESET_SERVICE = new VanillaResetService(new VanillaTeleportBackend());
 		ServerTickEvents.END_SERVER_TICK.register(server -> VANILLA_RESET_SERVICE.tickAll());
 		FARMING_CONFIG = new FarmingConfig();
+		SERVER_FLAG_DEFAULTS = new ServerFlagDefaults();
+		EXCEPTION_GROUP_REGISTRY = new ExceptionGroupRegistry();
 		ProtectionListeners.register();
 		IslandCommand.register();
 		DimensionCommand.register();

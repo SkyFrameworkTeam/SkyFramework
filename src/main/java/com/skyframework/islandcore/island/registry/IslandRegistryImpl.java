@@ -15,6 +15,7 @@ import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.island.model.IslandType;
 import com.skyframework.islandcore.island.spatial.SpatialIndex;
 import com.skyframework.islandcore.island.spatial.SpatialIndexImpl;
+import com.skyframework.islandcore.protection.flag.TriState;
 import com.skyframework.islandcore.storage.IslandStorage;
 import com.skyframework.islandcore.storage.nbt.NbtIslandStorage;
 
@@ -289,6 +290,33 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 		IslandData island = islandsById.get(islandId);
 		if (island != null) {
 			island.setSetting(setting, value);
+			saveIfStorageReady(island);
+		}
+	}
+
+	@Override
+	public void updateGlobalFlagOverride(UUID islandId, String flagId, TriState value) {
+		IslandData island = islandsById.get(islandId);
+		if (island != null) {
+			island.setGlobalFlagOverride(flagId, value);
+			saveIfStorageReady(island);
+		}
+	}
+
+	@Override
+	public void updateRoleFlagOverride(UUID islandId, String flagId, TriState value) {
+		IslandData island = islandsById.get(islandId);
+		if (island != null) {
+			island.setRoleFlagOverrideForAllRoles(flagId, value);
+			saveIfStorageReady(island);
+		}
+	}
+
+	@Override
+	public void updateExceptionGroupOverride(UUID islandId, String groupId, Boolean value) {
+		IslandData island = islandsById.get(islandId);
+		if (island != null) {
+			island.setExceptionGroupOverride(groupId, value);
 			saveIfStorageReady(island);
 		}
 	}

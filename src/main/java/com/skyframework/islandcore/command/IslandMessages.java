@@ -116,7 +116,9 @@ public final class IslandMessages {
 		}
 	}
 
-	private static void sectionTitle(ServerCommandSource source, String title, Formatting color) {
+	// Package-visible (not private): reused by IslandCommand's /island flags listing for the same
+	// titled-section look as sendIslandSummaryPlayer/sendIslandSummaryAdmin.
+	static void sectionTitle(ServerCommandSource source, String title, Formatting color) {
 		source.sendFeedback(() -> Text.literal(title).formatted(Formatting.BOLD, color), false);
 	}
 
@@ -195,7 +197,8 @@ public final class IslandMessages {
 		}
 	}
 
-	private static Text labeled(String label, String value) {
+	// Package-visible (not private): reused by IslandCommand's /island flags listing.
+	static Text labeled(String label, String value) {
 		return Text.literal(label).formatted(Formatting.GRAY).append(Text.literal(value).formatted(Formatting.WHITE));
 	}
 }

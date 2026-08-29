@@ -3,6 +3,7 @@ package com.skyframework.islandcore.island.model;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandPermission;
 import com.skyframework.islandcore.api.island.IslandState;
+import com.skyframework.islandcore.protection.flag.TriState;
 
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.util.math.BlockPos;
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -44,6 +46,9 @@ public class IslandData implements Island {
 	private IslandState state;
 	private final Set<IslandMember> members = new LinkedHashSet<>();
 	private final Map<IslandSetting, Boolean> settings = new EnumMap<>(IslandSetting.class);
+	private final Map<String, TriState> globalFlagOverrides = new HashMap<>();
+	private final Map<String, Map<IslandRole, TriState>> roleFlagOverrides = new HashMap<>();
+	private final Map<String, Boolean> exceptionGroupOverrides = new HashMap<>();
 
 	private final Instant createdAt;
 	private Instant updatedAt;
@@ -105,7 +110,10 @@ public class IslandData implements Island {
 			Collection<IslandMember> members,
 			Map<IslandSetting, Boolean> settings,
 			Instant lastBiomeChangeAt,
-			String currentBiomeId
+			String currentBiomeId,
+			Map<String, TriState> globalFlagOverrides,
+			Map<String, Map<IslandRole, TriState>> roleFlagOverrides,
+			Map<String, Boolean> exceptionGroupOverrides
 	) {
 		this(islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
 				islandSize, plotSize, islandType, homeLocation, state, createdAt, currentBiomeId);
@@ -113,6 +121,9 @@ public class IslandData implements Island {
 		this.members.addAll(members);
 		this.settings.putAll(settings);
 		this.lastBiomeChangeAt = lastBiomeChangeAt;
+		this.globalFlagOverrides.putAll(globalFlagOverrides);
+		this.roleFlagOverrides.putAll(roleFlagOverrides);
+		this.exceptionGroupOverrides.putAll(exceptionGroupOverrides);
 	}
 
 	@Override
@@ -265,6 +276,75 @@ public class IslandData implements Island {
 	public void setSetting(IslandSetting setting, boolean value) {
 		settings.put(setting, value);
 		touch();
+	}
+
+	@Override
+	public TriState getGlobalFlagOverride(String flagId) {
+		return globalFlagOverrides.getOrDefault(flagId, TriState.DEFAULT);
+	}
+
+	public void setGlobalFlagOverride(String flagId, TriState value) {
+		if (value == TriState.DEFAULT) {
+			globalFlagOverrides.remove(flagId);
+		} else {
+			globalFlagOverrides.put(flagId, value);
+		}
+		touch();
+	}
+
+	@Override
+	public TriState getRoleFlagOverride(String flagId, IslandRole role) {
+		Map<IslandRole, TriState> perRole = roleFlagOverrides.get(flagId);
+		if (perRole == null) {
+			return TriState.DEFAULT;
+		}
+		return perRole.getOrDefault(role, TriState.DEFAULT);
+	}
+
+	// /island flags set has no per-role argument (only <flag> <value>): it overrides every role
+	// uniformly. The richer per-role map shape is kept in storage regardless, so a future sprint
+	// could expose a finer-grained command without a schema change.
+	public void setRoleFlagOverrideForAllRoles(String flagId, TriState value) {
+		if (value == TriState.DEFAULT) {
+			roleFlagOverrides.remove(flagId);
+		} else {
+			Map<IslandRole, TriState> perRole = new EnumMap<>(IslandRole.class);
+			for (IslandRole role : IslandRole.values()) {
+				perRole.put(role, value);
+			}
+			roleFlagOverrides.put(flagId, perRole);
+		}
+		touch();
+	}
+
+	@Override
+	public Boolean getExceptionGroupOverride(String groupId) {
+		return exceptionGroupOverrides.get(groupId);
+	}
+
+	public void setExceptionGroupOverride(String groupId, Boolean value) {
+		if (value == null) {
+			exceptionGroupOverrides.remove(groupId);
+		} else {
+			exceptionGroupOverrides.put(groupId, value);
+		}
+		touch();
+	}
+
+	// Raw-map accessors for NbtIslandStorage only (mirrors getMembers()'s read-only-view pattern):
+	// unlike getSetting()'s per-key resolved-value approach, these overrides need to be persisted
+	// SPARSELY (only what this island actually overrides), since their resolution also depends on
+	// server-level defaults NbtIslandStorage/IslandData know nothing about.
+	public Map<String, TriState> getGlobalFlagOverrides() {
+		return Collections.unmodifiableMap(globalFlagOverrides);
+	}
+
+	public Map<String, Map<IslandRole, TriState>> getRoleFlagOverrides() {
+		return Collections.unmodifiableMap(roleFlagOverrides);
+	}
+
+	public Map<String, Boolean> getExceptionGroupOverrides() {
+		return Collections.unmodifiableMap(exceptionGroupOverrides);
 	}
 
 	@Override

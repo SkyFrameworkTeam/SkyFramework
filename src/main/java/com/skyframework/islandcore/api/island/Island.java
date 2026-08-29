@@ -5,6 +5,7 @@ import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.island.model.IslandType;
+import com.skyframework.islandcore.protection.flag.TriState;
 
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.util.math.BlockPos;
@@ -57,6 +58,17 @@ public interface Island {
 
 	// Read-only: writing a setting is only exposed via the registry (updateIslandSetting), not here.
 	boolean getSetting(IslandSetting setting);
+
+	// Read-only: writing an override is only exposed via the registry (updateGlobalFlagOverride/
+	// updateRoleFlagOverride/updateExceptionGroupOverride), not here. Never null; TriState.DEFAULT
+	// means "no island-level override for this flag" (see FlagResolver for the rest of the chain).
+	TriState getGlobalFlagOverride(String flagId);
+
+	TriState getRoleFlagOverride(String flagId, IslandRole role);
+
+	// Null means "no island-level override for this exception group" (falls back to the group's own
+	// defaultEnabled — see ExceptionResolver), as opposed to a real true/false override.
+	Boolean getExceptionGroupOverride(String groupId);
 
 	IslandRole getRoleOf(UUID playerUuid);
 

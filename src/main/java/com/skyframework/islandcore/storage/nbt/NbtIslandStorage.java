@@ -9,6 +9,7 @@ import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.island.model.IslandType;
+import com.skyframework.islandcore.protection.flag.TriState;
 import com.skyframework.islandcore.storage.IslandStorage;
 
 import net.minecraft.nbt.NbtCompound;
@@ -31,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -139,6 +141,9 @@ public class NbtIslandStorage implements IslandStorage {
 		nbt.putString("state", island.getState().name());
 		nbt.put("members", membersToNbt(island.getMembers()));
 		nbt.put("settings", settingsToNbt(island));
+		nbt.put("globalFlagOverrides", globalFlagOverridesToNbt(island));
+		nbt.put("roleFlagOverrides", roleFlagOverridesToNbt(island));
+		nbt.put("exceptionGroupOverrides", exceptionGroupOverridesToNbt(island));
 		nbt.putLong("createdAt", island.getCreatedAt().toEpochMilli());
 		nbt.putLong("updatedAt", island.getUpdatedAt().toEpochMilli());
 
@@ -176,11 +181,38 @@ public class NbtIslandStorage implements IslandStorage {
 		Instant createdAt = Instant.ofEpochMilli(nbt.getLong("createdAt"));
 		Instant updatedAt = Instant.ofEpochMilli(nbt.getLong("updatedAt"));
 
+		// Absent on islands saved before the flag system existed: empty compounds parse to empty maps.
+		Map<String, TriState> globalFlagOverrides = globalFlagOverridesFromNbt(nbt.getCompound("globalFlagOverrides"));
+		Map<String, Map<IslandRole, TriState>> roleFlagOverrides = roleFlagOverridesFromNbt(nbt.getCompound("roleFlagOverrides"));
+		Map<String, Boolean> exceptionGroupOverrides = exceptionGroupOverridesFromNbt(nbt.getCompound("exceptionGroupOverrides"));
+
+		// Backward-compat: before the flag system existed, /island settings firespread/pvp/mobdamage
+		// wrote directly into the "settings" compound above (keyed by the old IslandSetting enum).
+		// If the new global flag override is absent but the legacy setting was EXPLICITLY set (not
+		// just defaulted), seed the new map from it so past changes keep applying after this migration.
+		NbtCompound legacySettingsNbt = nbt.getCompound("settings");
+		migrateLegacyGlobalFlag(globalFlagOverrides, legacySettingsNbt, IslandSetting.FIRE_SPREAD, "fire_spread");
+		migrateLegacyGlobalFlag(globalFlagOverrides, legacySettingsNbt, IslandSetting.PVP_DAMAGE, "pvp_damage");
+		migrateLegacyGlobalFlag(globalFlagOverrides, legacySettingsNbt, IslandSetting.MOB_DAMAGE, "mob_damage");
+
 		return new IslandData(
 				islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
 				islandSize, plotSize, islandType, homeLocation, state, createdAt, updatedAt, members, settings,
-				lastBiomeChangeAt, currentBiomeId
+				lastBiomeChangeAt, currentBiomeId, globalFlagOverrides, roleFlagOverrides, exceptionGroupOverrides
 		);
+	}
+
+	private static void migrateLegacyGlobalFlag(
+			Map<String, TriState> globalFlagOverrides, NbtCompound legacySettingsNbt, IslandSetting legacySetting, String flagId) {
+		if (globalFlagOverrides.containsKey(flagId)) {
+			// Already has a new-format value: don't clobber it with a possibly-stale legacy one.
+			return;
+		}
+		if (!legacySettingsNbt.contains(legacySetting.name(), NbtElement.BYTE_TYPE)) {
+			// Never explicitly set under the old system either: nothing to migrate.
+			return;
+		}
+		globalFlagOverrides.put(flagId, TriState.fromBoolean(legacySettingsNbt.getBoolean(legacySetting.name())));
 	}
 
 	private static NbtCompound posToNbt(BlockPos pos) {
@@ -265,5 +297,72 @@ public class NbtIslandStorage implements IslandStorage {
 			}
 		}
 		return settings;
+	}
+
+	private static NbtCompound globalFlagOverridesToNbt(IslandData island) {
+		NbtCompound nbt = new NbtCompound();
+		for (Map.Entry<String, TriState> entry : island.getGlobalFlagOverrides().entrySet()) {
+			nbt.putString(entry.getKey(), entry.getValue().name());
+		}
+		return nbt;
+	}
+
+	private static Map<String, TriState> globalFlagOverridesFromNbt(NbtCompound nbt) {
+		Map<String, TriState> overrides = new HashMap<>();
+		for (String flagId : nbt.getKeys()) {
+			try {
+				overrides.put(flagId, TriState.valueOf(nbt.getString(flagId)));
+			} catch (IllegalArgumentException e) {
+				IslandCoreMod.LOGGER.error("Skipping invalid global flag override \"{}\"", flagId, e);
+			}
+		}
+		return overrides;
+	}
+
+	private static NbtCompound roleFlagOverridesToNbt(IslandData island) {
+		NbtCompound nbt = new NbtCompound();
+		for (Map.Entry<String, Map<IslandRole, TriState>> entry : island.getRoleFlagOverrides().entrySet()) {
+			NbtCompound perRoleNbt = new NbtCompound();
+			for (Map.Entry<IslandRole, TriState> roleEntry : entry.getValue().entrySet()) {
+				perRoleNbt.putString(roleEntry.getKey().name(), roleEntry.getValue().name());
+			}
+			nbt.put(entry.getKey(), perRoleNbt);
+		}
+		return nbt;
+	}
+
+	private static Map<String, Map<IslandRole, TriState>> roleFlagOverridesFromNbt(NbtCompound nbt) {
+		Map<String, Map<IslandRole, TriState>> overrides = new HashMap<>();
+		for (String flagId : nbt.getKeys()) {
+			NbtCompound perRoleNbt = nbt.getCompound(flagId);
+			Map<IslandRole, TriState> perRole = new EnumMap<>(IslandRole.class);
+			for (String roleName : perRoleNbt.getKeys()) {
+				try {
+					perRole.put(IslandRole.valueOf(roleName), TriState.valueOf(perRoleNbt.getString(roleName)));
+				} catch (IllegalArgumentException e) {
+					IslandCoreMod.LOGGER.error("Skipping invalid role flag override \"{}\"/\"{}\"", flagId, roleName, e);
+				}
+			}
+			if (!perRole.isEmpty()) {
+				overrides.put(flagId, perRole);
+			}
+		}
+		return overrides;
+	}
+
+	private static NbtCompound exceptionGroupOverridesToNbt(IslandData island) {
+		NbtCompound nbt = new NbtCompound();
+		for (Map.Entry<String, Boolean> entry : island.getExceptionGroupOverrides().entrySet()) {
+			nbt.putBoolean(entry.getKey(), entry.getValue());
+		}
+		return nbt;
+	}
+
+	private static Map<String, Boolean> exceptionGroupOverridesFromNbt(NbtCompound nbt) {
+		Map<String, Boolean> overrides = new HashMap<>();
+		for (String groupId : nbt.getKeys()) {
+			overrides.put(groupId, nbt.getBoolean(groupId));
+		}
+		return overrides;
 	}
 }

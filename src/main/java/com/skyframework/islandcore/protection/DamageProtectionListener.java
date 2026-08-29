@@ -2,8 +2,8 @@ package com.skyframework.islandcore.protection;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
-import com.skyframework.islandcore.api.island.IslandPermission;
-import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.protection.flag.FlagRegistry;
+import com.skyframework.islandcore.protection.flag.FlagResolver;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
@@ -48,15 +48,15 @@ public final class DamageProtectionListener {
 		Island island = maybeIsland.get();
 
 		if (attacker instanceof PlayerEntity attackerPlayer
-				&& island.hasPermission(attackerPlayer.getUuid(), IslandPermission.ENTITIES)) {
+				&& FlagResolver.resolveForPlayer(island, attackerPlayer.getUuid(), FlagRegistry.ENTITIES)) {
 			return true;
 		}
 
 		if (attacker instanceof PlayerEntity && victim instanceof PlayerEntity) {
-			return island.getSetting(IslandSetting.PVP_DAMAGE);
+			return FlagResolver.resolveGlobal(island, FlagRegistry.PVP_DAMAGE);
 		}
 
 		// At least one side is not a player.
-		return island.getSetting(IslandSetting.MOB_DAMAGE);
+		return FlagResolver.resolveGlobal(island, FlagRegistry.MOB_DAMAGE);
 	}
 }

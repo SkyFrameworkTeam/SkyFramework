@@ -3,6 +3,7 @@ package com.skyframework.islandcore.api.registry;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.protection.flag.TriState;
 
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.util.math.BlockPos;
@@ -53,6 +54,12 @@ public interface IslandRegistryApi {
 	void updateLastBiomeChangeAt(UUID islandId, Instant instant);
 
 	void updateIslandSetting(UUID islandId, IslandSetting setting, boolean value);
+
+	void updateGlobalFlagOverride(UUID islandId, String flagId, TriState value);
+
+	void updateRoleFlagOverride(UUID islandId, String flagId, TriState value);
+
+	void updateExceptionGroupOverride(UUID islandId, String groupId, Boolean value);
 
 	// Saves every currently loaded island; used as an extra safety net on server shutdown
 	// (individual mutations already persist themselves).

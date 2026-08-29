@@ -242,9 +242,9 @@ public final class ServerPacketHandlers {
 
 		registerGuarded(IslandSettingsUpdateC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
-			ActionOutcome<Void> outcome = IslandSetting.fromId(payload.settingId())
-					.map(setting -> IslandActionService.updateSetting(player.getUuid(), setting, payload.value()))
-					.orElseGet(() -> ActionOutcome.fail(ActionReason.UNKNOWN_SETTING));
+			// Same entry point the text command ("/island settings") calls: neither path decides on
+			// its own whether a setting id maps to the new Flag system or the old IslandSetting one.
+			ActionOutcome<Void> outcome = IslandActionService.updateLegacySetting(player.getUuid(), payload.settingId(), payload.value());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
