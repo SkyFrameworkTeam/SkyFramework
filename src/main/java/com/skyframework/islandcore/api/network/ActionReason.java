@@ -175,6 +175,63 @@ public final class ActionReason {
 	// is the fallback for a client that ignores it and keeps sending packets anyway.
 	public static final String PROTOCOL_MISMATCH = "error.protocol_mismatch";
 
+	// Flags/exception-groups network block. Player-facing (not admin-only), so — like every
+	// constant above the admin block — no "error." prefix.
+
+	// FlagSetC2S when the flagId doesn't match any registered Flag (FlagRegistry#get).
+	public static final String FLAG_NOT_FOUND = "flag_not_found";
+
+	// FlagSetC2S when the value string isn't one of allow/deny/default (TriState#valueOf).
+	public static final String INVALID_FLAG_VALUE = "invalid_flag_value";
+
+	// ExceptionGroupsStatusRequestC2S/ExceptionGroupSetC2S when the groupId doesn't match any
+	// registered ExceptionGroup (ExceptionGroupRegistry#getGroup).
+	public static final String EXCEPTION_GROUP_NOT_FOUND = "exception_group_not_found";
+
+	// ExceptionGroupSetC2S when the group exists but ExceptionGroup#isOwnerConfigurable() is false
+	// (only an admin may change it — mirrors executeExceptionsSet's own check).
+	public static final String EXCEPTION_GROUP_NOT_OWNER_CONFIGURABLE = "exception_group_not_owner_configurable";
+
+	// Party network block.
+
+	// PartyCreateC2S/PartyInviteC2S/PartyAcceptC2S when the acting/target player is already in a
+	// party (PartyRegistry#createParty/#addMember's one-party-at-a-time guard).
+	public static final String ALREADY_IN_PARTY = "already_in_party";
+
+	// PartyCreateC2S/PartyRenameC2S when the requested name is already taken by another party
+	// (PartyRegistry#createParty/#renameParty, case-insensitive).
+	public static final String PARTY_NAME_TAKEN = "party_name_taken";
+
+	// PartyLeaveC2S/PartyKickC2S/PartyRenameC2S/PartyDisbandRequestC2S/PartyAllyAddC2S/
+	// PartyAllyRemoveC2S when the sender isn't in any party (PartyRegistry#getPartyOf empty).
+	public static final String NO_PARTY = "no_party";
+
+	// PartyKickC2S/PartyRenameC2S/PartyDisbandRequestC2S/PartyAllyAddC2S/PartyAllyRemoveC2S when
+	// the sender is in a party but isn't its leader — mirrors PartyCommand#requireLeaderOf.
+	public static final String NOT_PARTY_LEADER = "not_party_leader";
+
+	// PartyAcceptC2S when there's no pending party invite for the sender, or it already expired
+	// (PartyInviteManager#acceptInvite empty).
+	public static final String NO_PENDING_PARTY_INVITE = "no_pending_party_invite";
+
+	// PartyAllyAddC2S/PartyAllyRemoveC2S when targetPartyName doesn't match any party
+	// (PartyRegistry#getPartyByName empty).
+	public static final String PARTY_NOT_FOUND = "party_not_found";
+
+	// PartyKickC2S when targetUuid is the sender's own uuid (use PartyLeaveC2S/disband instead).
+	public static final String CANNOT_KICK_SELF = "cannot_kick_self";
+
+	// PartyKickC2S when targetUuid isn't a member of the sender's party.
+	public static final String NOT_A_PARTY_MEMBER = "not_a_party_member";
+
+	// PartyAllyAddC2S when targetPartyName resolves to the sender's own party.
+	public static final String PARTY_ALLY_SELF = "party_ally_self";
+
+	// PartyDisbandConfirmC2S when there's no pending disband request for the sender's party, or it
+	// already expired (PartyDisbandRequests#confirm false) — mirrors PartyCommand's own "/party
+	// disband" (request) step must run first.
+	public static final String NO_PENDING_PARTY_DISBAND = "no_pending_party_disband";
+
 	private ActionReason() {
 	}
 }

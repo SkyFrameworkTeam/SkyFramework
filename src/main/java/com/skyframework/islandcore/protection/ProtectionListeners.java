@@ -64,7 +64,7 @@ public class ProtectionListeners {
 			return true;
 		}
 
-		player.sendMessage(denyMessage(pos), false);
+		DeniedActionThrottler.notifyDenied(player, denyMessage(pos));
 		return false;
 	}
 
@@ -96,7 +96,7 @@ public class ProtectionListeners {
 			return ActionResult.PASS;
 		}
 
-		player.sendMessage(denyMessage(checkedPos), false);
+		DeniedActionThrottler.notifyDenied(player, denyMessage(checkedPos));
 		return ActionResult.FAIL;
 	}
 
@@ -109,7 +109,7 @@ public class ProtectionListeners {
 			return ActionResult.PASS;
 		}
 
-		player.sendMessage(denyMessage(entity.getBlockPos()), false);
+		DeniedActionThrottler.notifyDenied(player, denyMessage(entity.getBlockPos()));
 		return ActionResult.FAIL;
 	}
 
@@ -122,7 +122,7 @@ public class ProtectionListeners {
 			return ActionResult.PASS;
 		}
 
-		player.sendMessage(denyMessage(entity.getBlockPos()), false);
+		DeniedActionThrottler.notifyDenied(player, denyMessage(entity.getBlockPos()));
 		return ActionResult.FAIL;
 	}
 }

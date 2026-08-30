@@ -12,6 +12,7 @@ import com.skyframework.islandcore.protection.flag.FlagRegistry;
 import com.skyframework.islandcore.protection.flag.FlagResolver;
 
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.Registries;
@@ -117,6 +118,20 @@ public class AccessControllerImpl implements AccessController {
 			return false;
 		}
 
+		// Owner/ENTITIES bypass for the ATTACK path on a LivingEntity, checked BEFORE the
+		// exception-group lookup below: an owner/trusted member is meant to be exempt from every
+		// restriction on their own island, not just the role-based ones. Without this, an example
+		// exception group like "animals" (allowBreak=false for minecraft:horse, meant to let a
+		// stranger pet/ride a horse without letting them kill it) would ALSO block the owner from
+		// ever attacking their own horse — exception groups have no innate owner-exemption of their
+		// own, unlike FlagResolver.resolveForPlayer's OWNER short-circuit. Scoped to
+		// useAllowBreak+LivingEntity only (the attack path): canInteractEntity (mounting/petting)
+		// is untouched, and non-living attack targets still fall through to the exception check.
+		if (useAllowBreak && entity instanceof LivingEntity
+				&& FlagResolver.resolveForPlayer(island, playerUuid, FlagRegistry.ENTITIES)) {
+			return true;
+		}
+
 		Identifier entityTypeId = Registries.ENTITY_TYPE.getId(entity.getType());
 		Optional<ExceptionGroup> exception = ExceptionResolver.resolve(island, entityTypeId, ExceptionGroupCategory.ENTITY);
 		if (exception.isPresent()) {
@@ -124,6 +139,20 @@ public class AccessControllerImpl implements AccessController {
 			if (!group.isRequireEmptyHand() || isMainHandEmpty(world, playerUuid)) {
 				return useAllowBreak ? group.isAllowBreak() : group.isAllowInteract();
 			}
+		}
+
+		// Attacking (useAllowBreak=true) a LivingEntity — a player or a mob — is what triggers
+		// ServerLivingEntityEvents.ALLOW_DAMAGE afterward, which DamageProtectionListener already
+		// governs with PVP_DAMAGE/MOB_DAMAGE (replicating an ENTITIES bypass ONLY for the
+		// MOB_DAMAGE/mixed-side case, deliberately never for PVP — see that class's javadoc).
+		// Deferring here instead of also vetoing on ENTITIES avoids this role-based flag silently
+		// overriding those island-global toggles for every attacker who isn't a trusted member —
+		// previously a VISITOR could never even land a hit regardless of PVP_DAMAGE/MOB_DAMAGE
+		// being set to true, since this check ran first and denied outright. Non-living attack
+		// targets (item frames, paintings, etc.) never reach ALLOW_DAMAGE, so ENTITIES remains
+		// their only protection.
+		if (useAllowBreak && entity instanceof LivingEntity) {
+			return true;
 		}
 
 		return FlagResolver.resolveForPlayer(island, playerUuid, FlagRegistry.ENTITIES);

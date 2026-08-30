@@ -98,6 +98,31 @@ public final class NetworkChannels {
 	public static final Identifier VANILLA_RESET_CONFIRM_C2S = Identifier.of("islandcore", "vanilla_reset_confirm_c2s");
 	public static final Identifier VANILLA_RESET_CANCEL_C2S = Identifier.of("islandcore", "vanilla_reset_cancel_c2s");
 
+	// Flags + exception groups network block: player-facing (not admin-only), mirrors what
+	// "/island flags"/"/island exceptions" already compute — see FlagsStatusBuilder.
+
+	public static final Identifier FLAGS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "flags_status_request_c2s");
+	public static final Identifier FLAGS_STATUS_S2C = Identifier.of("islandcore", "flags_status_s2c");
+	public static final Identifier FLAG_SET_C2S = Identifier.of("islandcore", "flag_set_c2s");
+	public static final Identifier EXCEPTION_GROUPS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "exception_groups_status_request_c2s");
+	public static final Identifier EXCEPTION_GROUPS_STATUS_S2C = Identifier.of("islandcore", "exception_groups_status_s2c");
+	public static final Identifier EXCEPTION_GROUP_SET_C2S = Identifier.of("islandcore", "exception_group_set_c2s");
+
+	// Party network block: mirrors "/party" — see PartyStatusBuilder.
+
+	public static final Identifier PARTY_STATUS_REQUEST_C2S = Identifier.of("islandcore", "party_status_request_c2s");
+	public static final Identifier PARTY_STATUS_S2C = Identifier.of("islandcore", "party_status_s2c");
+	public static final Identifier PARTY_CREATE_C2S = Identifier.of("islandcore", "party_create_c2s");
+	public static final Identifier PARTY_INVITE_C2S = Identifier.of("islandcore", "party_invite_c2s");
+	public static final Identifier PARTY_ACCEPT_C2S = Identifier.of("islandcore", "party_accept_c2s");
+	public static final Identifier PARTY_LEAVE_C2S = Identifier.of("islandcore", "party_leave_c2s");
+	public static final Identifier PARTY_KICK_C2S = Identifier.of("islandcore", "party_kick_c2s");
+	public static final Identifier PARTY_RENAME_C2S = Identifier.of("islandcore", "party_rename_c2s");
+	public static final Identifier PARTY_DISBAND_REQUEST_C2S = Identifier.of("islandcore", "party_disband_request_c2s");
+	public static final Identifier PARTY_DISBAND_CONFIRM_C2S = Identifier.of("islandcore", "party_disband_confirm_c2s");
+	public static final Identifier PARTY_ALLY_ADD_C2S = Identifier.of("islandcore", "party_ally_add_c2s");
+	public static final Identifier PARTY_ALLY_REMOVE_C2S = Identifier.of("islandcore", "party_ally_remove_c2s");
+
 	private NetworkChannels() {
 	}
 }

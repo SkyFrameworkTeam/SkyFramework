@@ -40,6 +40,7 @@ import com.skyframework.islandcore.portal.PortalLinkConfig;
 import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
 import com.skyframework.islandcore.protection.DamageProtectionListener;
+import com.skyframework.islandcore.protection.DeniedActionThrottler;
 import com.skyframework.islandcore.protection.ProtectionListeners;
 import com.skyframework.islandcore.protection.exception.ExceptionGroupRegistry;
 import com.skyframework.islandcore.protection.flag.ServerFlagDefaults;
@@ -141,6 +142,7 @@ public class IslandCoreMod implements ModInitializer {
 		PARTY_REGISTRY = new PartyRegistryImpl();
 		PARTY_INVITE_MANAGER = new PartyInviteManagerImpl();
 		ProtectionListeners.register();
+		DeniedActionThrottler.register();
 		IslandCommand.register();
 		DimensionCommand.register();
 		PartyCommand.register();

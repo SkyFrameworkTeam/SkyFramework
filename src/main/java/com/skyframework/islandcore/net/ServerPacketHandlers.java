@@ -14,6 +14,8 @@ import com.skyframework.islandcore.island.lifecycle.MembershipService;
 import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.party.lifecycle.PartyDisbandRequests;
+import com.skyframework.islandcore.party.model.PartyData;
 import com.skyframework.islandcore.net.admin.dimension.DimensionAdminBuilder;
 import com.skyframework.islandcore.net.admin.dimension.DimensionCreateC2S;
 import com.skyframework.islandcore.net.admin.dimension.DimensionDeleteC2S;
@@ -49,6 +51,13 @@ import com.skyframework.islandcore.net.admin.vanilla.VanillaResetQueueC2S;
 import com.skyframework.islandcore.net.biome.BiomeTiersBuilder;
 import com.skyframework.islandcore.net.biome.BiomeTiersRequestC2S;
 import com.skyframework.islandcore.net.biome.BiomeTiersS2C;
+import com.skyframework.islandcore.net.flag.ExceptionGroupSetC2S;
+import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusRequestC2S;
+import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusS2C;
+import com.skyframework.islandcore.net.flag.FlagSetC2S;
+import com.skyframework.islandcore.net.flag.FlagsStatusBuilder;
+import com.skyframework.islandcore.net.flag.FlagsStatusRequestC2S;
+import com.skyframework.islandcore.net.flag.FlagsStatusS2C;
 import com.skyframework.islandcore.net.handshake.ClientHandshakeC2S;
 import com.skyframework.islandcore.net.handshake.ServerHandshakeS2C;
 import com.skyframework.islandcore.net.island.IslandBiomeChangeC2S;
@@ -64,10 +73,27 @@ import com.skyframework.islandcore.net.member.MemberInviteAcceptC2S;
 import com.skyframework.islandcore.net.member.MemberInviteC2S;
 import com.skyframework.islandcore.net.member.MemberRemoveC2S;
 import com.skyframework.islandcore.net.member.MemberTrustC2S;
+import com.skyframework.islandcore.net.party.PartyAcceptC2S;
+import com.skyframework.islandcore.net.party.PartyAllyAddC2S;
+import com.skyframework.islandcore.net.party.PartyAllyRemoveC2S;
+import com.skyframework.islandcore.net.party.PartyCreateC2S;
+import com.skyframework.islandcore.net.party.PartyDisbandConfirmC2S;
+import com.skyframework.islandcore.net.party.PartyDisbandRequestC2S;
+import com.skyframework.islandcore.net.party.PartyInviteC2S;
+import com.skyframework.islandcore.net.party.PartyKickC2S;
+import com.skyframework.islandcore.net.party.PartyLeaveC2S;
+import com.skyframework.islandcore.net.party.PartyRenameC2S;
+import com.skyframework.islandcore.net.party.PartyStatusBuilder;
+import com.skyframework.islandcore.net.party.PartyStatusRequestC2S;
+import com.skyframework.islandcore.net.party.PartyStatusS2C;
 import com.skyframework.islandcore.net.teleport.TeleportRequestC2S;
 import com.skyframework.islandcore.net.teleport.TeleportStatusBuilder;
 import com.skyframework.islandcore.net.teleport.TeleportStatusRequestC2S;
 import com.skyframework.islandcore.net.teleport.TeleportStatusS2C;
+import com.skyframework.islandcore.protection.exception.ExceptionGroup;
+import com.skyframework.islandcore.protection.flag.Flag;
+import com.skyframework.islandcore.protection.flag.FlagRegistry;
+import com.skyframework.islandcore.protection.flag.TriState;
 
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -77,6 +103,7 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -126,6 +153,8 @@ public final class ServerPacketHandlers {
 		registerMembershipHandlers();
 		registerTeleportHandlers();
 		registerBiomeTierHandlers();
+		registerFlagExceptionHandlers();
+		registerPartyHandlers();
 
 		registerAdminIslandHandlers();
 		registerSpawnAdminHandlers();
@@ -179,6 +208,26 @@ public final class ServerPacketHandlers {
 
 		PayloadTypeRegistry.playC2S().register(BiomeTiersRequestC2S.ID, BiomeTiersRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(BiomeTiersS2C.ID, BiomeTiersS2C.CODEC);
+
+		PayloadTypeRegistry.playC2S().register(FlagsStatusRequestC2S.ID, FlagsStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(FlagsStatusS2C.ID, FlagsStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(FlagSetC2S.ID, FlagSetC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(ExceptionGroupsStatusRequestC2S.ID, ExceptionGroupsStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(ExceptionGroupsStatusS2C.ID, ExceptionGroupsStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(ExceptionGroupSetC2S.ID, ExceptionGroupSetC2S.CODEC);
+
+		PayloadTypeRegistry.playC2S().register(PartyStatusRequestC2S.ID, PartyStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(PartyStatusS2C.ID, PartyStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyCreateC2S.ID, PartyCreateC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyInviteC2S.ID, PartyInviteC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyAcceptC2S.ID, PartyAcceptC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyLeaveC2S.ID, PartyLeaveC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyKickC2S.ID, PartyKickC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyRenameC2S.ID, PartyRenameC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyDisbandRequestC2S.ID, PartyDisbandRequestC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyDisbandConfirmC2S.ID, PartyDisbandConfirmC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyAllyAddC2S.ID, PartyAllyAddC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(PartyAllyRemoveC2S.ID, PartyAllyRemoveC2S.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(AdminIslandListRequestC2S.ID, AdminIslandListRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(AdminIslandListS2C.ID, AdminIslandListS2C.CODEC);
@@ -328,6 +377,348 @@ public final class ServerPacketHandlers {
 			ServerPlayerEntity player = context.player();
 			ServerPlayNetworking.send(player, BiomeTiersBuilder.build(player));
 		});
+	}
+
+	// Player-facing (not admin-only), mirrors "/island flags"/"/island exceptions" exactly: every
+	// handler below calls the same FlagResolver/ExceptionGroupRegistry/IslandActionService entry
+	// points those text commands already use — see FlagsStatusBuilder for the read side.
+	private static void registerFlagExceptionHandlers() {
+		registerGuarded(FlagsStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NO_ISLAND));
+				return;
+			}
+
+			ServerPlayNetworking.send(player, FlagsStatusBuilder.buildFlagsStatus(maybeIsland.get()));
+		});
+
+		registerGuarded(FlagSetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<Flag> maybeFlag = FlagRegistry.get(payload.flagId());
+			if (maybeFlag.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.FLAG_NOT_FOUND));
+				return;
+			}
+
+			TriState value;
+			try {
+				value = TriState.valueOf(payload.value().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_VALUE));
+				return;
+			}
+
+			// Same entry point "/island flags set" calls.
+			ActionOutcome<Void> outcome = IslandActionService.updateFlag(player.getUuid(), maybeFlag.get(), value);
+			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
+
+		registerGuarded(ExceptionGroupsStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NO_ISLAND));
+				return;
+			}
+
+			ServerPlayNetworking.send(player, FlagsStatusBuilder.buildExceptionGroupsStatus(maybeIsland.get()));
+		});
+
+		registerGuarded(ExceptionGroupSetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<ExceptionGroup> maybeGroup = IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(payload.groupId());
+			if (maybeGroup.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.EXCEPTION_GROUP_NOT_FOUND));
+				return;
+			}
+			if (!maybeGroup.get().isOwnerConfigurable()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.EXCEPTION_GROUP_NOT_OWNER_CONFIGURABLE));
+				return;
+			}
+
+			// Same entry point "/island exceptions set" calls.
+			ActionOutcome<Void> outcome = IslandActionService.updateExceptionGroup(player.getUuid(), payload.groupId(), payload.enabled());
+			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
+	}
+
+	// Mirrors "/party" exactly: every handler below calls the same PartyRegistry/
+	// PartyInviteManager/PartyDisbandRequests entry points that command tree already uses — see
+	// PartyStatusBuilder for the read side.
+	private static void registerPartyHandlers() {
+		registerGuarded(PartyStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			PartyStatusS2C response = IslandCoreMod.PARTY_REGISTRY.getPartyOf(player.getUuid())
+					.map(party -> PartyStatusBuilder.build(context.server(), party))
+					.orElseGet(PartyStatusS2C::absent);
+			ServerPlayNetworking.send(player, response);
+		});
+
+		registerGuarded(PartyCreateC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			// Pre-checked (read-only, same PartyRegistry accessors #createParty itself uses
+			// internally) rather than just try/catching createParty's IllegalStateException: that
+			// exception's message is the only way to tell "already in a party" apart from "name
+			// taken", and matching on message text would be fragile — this way the client gets the
+			// correct ActionReason for each cause instead of one guessed at random.
+			if (IslandCoreMod.PARTY_REGISTRY.getPartyOf(player.getUuid()).isPresent()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.ALREADY_IN_PARTY));
+				return;
+			}
+			if (IslandCoreMod.PARTY_REGISTRY.getPartyByName(payload.name()).isPresent()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_NAME_TAKEN));
+				return;
+			}
+
+			// Same entry point "/party create" calls.
+			IslandCoreMod.PARTY_REGISTRY.createParty(payload.name(), player.getUuid());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyInviteC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			Optional<UUID> targetUuid = MembershipService.resolvePlayerUuid(payload.targetName(), context.server());
+			if (targetUuid.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.TARGET_NOT_FOUND));
+				return;
+			}
+
+			// Same entry point "/party invite" calls — PartyInviteManager#requestInvite itself
+			// throws if the target is already in a party (single possible cause here, unlike
+			// createParty above, so a plain try/catch is precise enough).
+			try {
+				IslandCoreMod.PARTY_INVITE_MANAGER.requestInvite(party.getPartyId(), player.getUuid(), targetUuid.get());
+			} catch (IllegalStateException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.ALREADY_IN_PARTY));
+				return;
+			}
+
+			ServerPlayerEntity targetPlayer = context.server().getPlayerManager().getPlayer(targetUuid.get());
+			if (targetPlayer != null) {
+				targetPlayer.sendMessage(Text.literal(player.getGameProfile().getName()
+						+ " te ha invitado a su party \"" + party.getName()
+						+ "\". Usa /party accept en los próximos 5 minutos para unirte."), false);
+			}
+
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyAcceptC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty;
+			try {
+				// Same entry point "/party accept" calls.
+				maybeParty = IslandCoreMod.PARTY_INVITE_MANAGER.acceptInvite(player.getUuid());
+			} catch (IllegalStateException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.ALREADY_IN_PARTY));
+				return;
+			}
+
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NO_PENDING_PARTY_INVITE));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			ServerPlayerEntity leader = context.server().getPlayerManager().getPlayer(party.getLeaderUuid());
+			if (leader != null) {
+				leader.sendMessage(Text.literal(
+						player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a la party."), false);
+			}
+
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyLeaveC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			if (IslandCoreMod.PARTY_REGISTRY.getPartyOf(player.getUuid()).isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NO_PARTY));
+				return;
+			}
+
+			// Same entry point "/party leave" calls.
+			IslandCoreMod.PARTY_REGISTRY.leaveParty(player.getUuid());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyKickC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			if (payload.targetUuid().equals(player.getUuid())) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.CANNOT_KICK_SELF));
+				return;
+			}
+			if (!party.getMembers().contains(payload.targetUuid())) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NOT_A_PARTY_MEMBER));
+				return;
+			}
+
+			// Same entry point "/party kick" calls.
+			IslandCoreMod.PARTY_REGISTRY.removeMember(party.getPartyId(), payload.targetUuid());
+
+			ServerPlayerEntity targetPlayer = context.server().getPlayerManager().getPlayer(payload.targetUuid());
+			if (targetPlayer != null) {
+				targetPlayer.sendMessage(Text.literal("Has sido expulsado de la party \"" + party.getName() + "\"."), false);
+			}
+
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyRenameC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			// Same reasoning as PartyCreateC2S above: pre-checked so the taken-name case gets its
+			// own precise reason rather than a generic catch.
+			Optional<PartyData> maybeExisting = IslandCoreMod.PARTY_REGISTRY.getPartyByName(payload.newName());
+			if (maybeExisting.isPresent() && !maybeExisting.get().getPartyId().equals(party.getPartyId())) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_NAME_TAKEN));
+				return;
+			}
+
+			// Same entry point "/party rename" calls.
+			IslandCoreMod.PARTY_REGISTRY.renameParty(party.getPartyId(), payload.newName());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyDisbandRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+
+			// Same 15s confirmation window "/party disband" arms.
+			PartyDisbandRequests.request(maybeParty.get().getPartyId());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyDisbandConfirmC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			if (!PartyDisbandRequests.confirm(party.getPartyId())) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.NO_PENDING_PARTY_DISBAND));
+				return;
+			}
+
+			MinecraftServer server = context.server();
+			for (UUID memberUuid : party.getMembers()) {
+				if (memberUuid.equals(player.getUuid())) {
+					continue;
+				}
+				ServerPlayerEntity member = server.getPlayerManager().getPlayer(memberUuid);
+				if (member != null) {
+					member.sendMessage(Text.literal("La party \"" + party.getName() + "\" ha sido disuelta por su líder."), false);
+				}
+			}
+
+			// Same entry point "/party disband confirm" calls.
+			IslandCoreMod.PARTY_REGISTRY.disbandParty(party.getPartyId());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyAllyAddC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			Optional<PartyData> maybeTarget = IslandCoreMod.PARTY_REGISTRY.getPartyByName(payload.targetPartyName());
+			if (maybeTarget.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_NOT_FOUND));
+				return;
+			}
+			PartyData target = maybeTarget.get();
+
+			if (target.getPartyId().equals(party.getPartyId())) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_ALLY_SELF));
+				return;
+			}
+
+			// Same entry point "/party ally add" calls.
+			IslandCoreMod.PARTY_REGISTRY.addAlly(party.getPartyId(), target.getPartyId());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(PartyAllyRemoveC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
+			if (maybeParty.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
+				return;
+			}
+			PartyData party = maybeParty.get();
+
+			Optional<PartyData> maybeTarget = IslandCoreMod.PARTY_REGISTRY.getPartyByName(payload.targetPartyName());
+			if (maybeTarget.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_NOT_FOUND));
+				return;
+			}
+			PartyData target = maybeTarget.get();
+
+			// Same entry point "/party ally remove" calls.
+			IslandCoreMod.PARTY_REGISTRY.removeAlly(party.getPartyId(), target.getPartyId());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+	}
+
+	// Shared by every leader-only party handler above: returns the sender's party if they're its
+	// leader, empty otherwise — caller then uses notLeaderReason(...) to report NO_PARTY vs
+	// NOT_PARTY_LEADER. Mirrors PartyCommand#requireLeaderOf.
+	private static Optional<PartyData> requirePartyLeader(UUID playerUuid) {
+		Optional<PartyData> maybeParty = IslandCoreMod.PARTY_REGISTRY.getPartyOf(playerUuid);
+		if (maybeParty.isEmpty() || !maybeParty.get().getLeaderUuid().equals(playerUuid)) {
+			return Optional.empty();
+		}
+		return maybeParty;
+	}
+
+	private static String notLeaderReason(UUID playerUuid) {
+		return IslandCoreMod.PARTY_REGISTRY.getPartyOf(playerUuid).isEmpty() ? ActionReason.NO_PARTY : ActionReason.NOT_PARTY_LEADER;
 	}
 
 	// Admin network block: island list/detail/delete, Spawn management, Dimension Manager, vanilla

@@ -7,6 +7,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import com.skyframework.islandcore.IslandCoreMod;
+import com.skyframework.islandcore.party.lifecycle.PartyDisbandRequests;
 import com.skyframework.islandcore.party.model.PartyData;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -19,10 +20,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,14 +27,6 @@ import java.util.UUID;
 // shape as /dimension (see PartyRegistryImpl) rather than the IslandRegistry/MembershipService
 // path used by /island, since parties are deliberately independent of island/.
 public class PartyCommand {
-
-	// Lightweight confirmation for "/party disband" — per the sprint brief, disbanding a party
-	// doesn't warrant the full 30s/action-bar mechanism IslandDeletionService uses for deleting an
-	// island (much higher-stakes, physically destructive). A short in-memory pending flag, checked
-	// lazily (no ticking/countdown messages), is enough: "/party disband" warns and arms it,
-	// "/party disband confirm" within the window actually disbands.
-	private static final Duration DISBAND_CONFIRM_TIMEOUT = Duration.ofSeconds(15);
-	private static final Map<UUID, Instant> pendingDisbands = new HashMap<>();
 
 	private PartyCommand() {
 	}
@@ -248,10 +237,10 @@ public class PartyCommand {
 		}
 		PartyData party = maybeParty.get();
 
-		pendingDisbands.put(party.getPartyId(), Instant.now().plus(DISBAND_CONFIRM_TIMEOUT));
+		PartyDisbandRequests.request(party.getPartyId());
 		source.sendFeedback(() -> Text.literal(
 				"¿Seguro que quieres disolver la party \"" + party.getName() + "\"? Usa /party disband confirm en los próximos "
-						+ DISBAND_CONFIRM_TIMEOUT.toSeconds() + " segundos para confirmar.").formatted(Formatting.RED), false);
+						+ PartyDisbandRequests.TIMEOUT.toSeconds() + " segundos para confirmar.").formatted(Formatting.RED), false);
 		return 1;
 	}
 
@@ -265,8 +254,7 @@ public class PartyCommand {
 		}
 		PartyData party = maybeParty.get();
 
-		Instant expiresAt = pendingDisbands.remove(party.getPartyId());
-		if (expiresAt == null || Instant.now().isAfter(expiresAt)) {
+		if (!PartyDisbandRequests.confirm(party.getPartyId())) {
 			source.sendError(Text.literal("No hay ninguna solicitud de disolución pendiente (o ha caducado). Usa /party disband primero."));
 			return 0;
 		}

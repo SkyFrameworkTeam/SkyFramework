@@ -12,6 +12,9 @@ import com.skyframework.islandcore.island.model.IslandRole;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.text.ClickEvent;
+import net.minecraft.text.HoverEvent;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
@@ -33,12 +36,39 @@ public final class IslandMessages {
 	private IslandMessages() {
 	}
 
+	// /island admin list (all islands): both the owner and the island itself are shown as short,
+	// readable, colored labels instead of raw UUIDs, each with a hover tooltip and click-to-copy
+	// for the full UUID underneath — nicer to read, while keeping the raw id one click away for
+	// anyone who needs it (e.g. for /island admin list <player> or /island admin delete).
 	public static void sendIslandSummary(ServerCommandSource source, Island island) {
 		BlockPos center = island.getCenter();
-		source.sendFeedback(() -> Text.literal("- " + island.getIslandId()
-				+ " owner=" + island.getOwnerUuid()
-				+ " center=(" + center.getX() + ", " + center.getY() + ", " + center.getZ() + ")"
-				+ " state=" + island.getState()), false);
+		UUID ownerUuid = island.getOwnerUuid();
+		boolean isSpawnIsland = ownerUuid.equals(Island.SERVER_OWNER_UUID);
+		// Island.SERVER_OWNER_UUID isn't a real player: resolveName's server.getUserCache() lookup
+		// would just fail and fall back to printing the raw UUID, so short-circuit with a readable
+		// label instead — same special-casing AdminIslandBuilder already does for isSpawnIsland.
+		String ownerName = isSpawnIsland ? "Server" : resolveName(source.getServer(), ownerUuid);
+
+		MutableText ownerText = Text.literal(ownerName)
+				.formatted(Formatting.BOLD, Formatting.AQUA)
+				.styled(style -> style
+						.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal(ownerUuid.toString())))
+						.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, ownerUuid.toString())));
+
+		UUID islandId = island.getIslandId();
+		String islandLabel = isSpawnIsland ? "Isla de Spawn" : "Isla de " + ownerName;
+		MutableText islandText = Text.literal(islandLabel)
+				.formatted(Formatting.BOLD, Formatting.GOLD)
+				.styled(style -> style
+						.withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, Text.literal(islandId.toString())))
+						.withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, islandId.toString())));
+
+		source.sendFeedback(() -> Text.literal("- ")
+				.append(islandText)
+				.append(Text.literal(" owner="))
+				.append(ownerText)
+				.append(Text.literal(" center=(" + center.getX() + ", " + center.getY() + ", " + center.getZ() + ")"
+						+ " state=" + island.getState())), false);
 	}
 
 	// Player-facing view: readable, no raw UUIDs/bounds, technical fields omitted.

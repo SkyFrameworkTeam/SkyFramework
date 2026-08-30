@@ -17,9 +17,16 @@ import net.minecraft.world.World;
 import java.util.Optional;
 
 // Called from IslandCoreMod's second ServerLivingEntityEvents.ALLOW_DAMAGE listener.
-// An attacker who has the ENTITIES permission on the island always gets to attack, regardless
-// of PVP_DAMAGE/MOB_DAMAGE: this isn't "outside damage" being let in, it's the owner/a trusted
-// member acting legitimately on the island they already have rights on.
+//
+// Deliberately asymmetric between the two toggles (explicit design decision, not an oversight):
+//   - MOB_DAMAGE (at least one side isn't a player): an attacking player with the ENTITIES
+//     permission always gets to attack/manage their own animals or defend against mobs,
+//     regardless of MOB_DAMAGE — this isn't "outside damage" being let in, it's the owner/a
+//     trusted member acting legitimately on the island they already have rights on.
+//   - PVP_DAMAGE (both sides are players): NO exception, not even for the owner or someone with
+//     ENTITIES. The outcome depends solely on the island's resolved PVP_DAMAGE value — pvp=false
+//     means nobody can hit anybody there, pvp=true means anybody can hit anybody. This makes PVP
+//     symmetric: the owner can't rely on ENTITIES to sidestep their own PVP setting.
 public final class DamageProtectionListener {
 
 	private static final RegistryKey<World> ISLANDS_DIMENSION =
@@ -47,16 +54,18 @@ public final class DamageProtectionListener {
 
 		Island island = maybeIsland.get();
 
+		if (attacker instanceof PlayerEntity && victim instanceof PlayerEntity) {
+			// PVP is symmetric: no ENTITIES bypass here, not even for the owner — see class javadoc.
+			return FlagResolver.resolveGlobal(island, FlagRegistry.PVP_DAMAGE);
+		}
+
+		// At least one side is not a player: an attacking player with ENTITIES may always
+		// attack/manage their own animals or defend against mobs, regardless of MOB_DAMAGE.
 		if (attacker instanceof PlayerEntity attackerPlayer
 				&& FlagResolver.resolveForPlayer(island, attackerPlayer.getUuid(), FlagRegistry.ENTITIES)) {
 			return true;
 		}
 
-		if (attacker instanceof PlayerEntity && victim instanceof PlayerEntity) {
-			return FlagResolver.resolveGlobal(island, FlagRegistry.PVP_DAMAGE);
-		}
-
-		// At least one side is not a player.
 		return FlagResolver.resolveGlobal(island, FlagRegistry.MOB_DAMAGE);
 	}
 }
