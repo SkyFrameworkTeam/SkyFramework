@@ -5,6 +5,7 @@ import com.skyframework.islandcore.api.permission.PermissionProvider;
 import com.skyframework.islandcore.api.registry.IslandRegistryApi;
 import com.skyframework.islandcore.command.DimensionCommand;
 import com.skyframework.islandcore.command.IslandCommand;
+import com.skyframework.islandcore.command.PartyCommand;
 import com.skyframework.islandcore.dimension.registry.DimensionRegistry;
 import com.skyframework.islandcore.dimension.registry.DimensionRegistryImpl;
 import com.skyframework.islandcore.dimension.runtime.FantasyDimensionRuntimeProvider;
@@ -25,6 +26,10 @@ import com.skyframework.islandcore.island.lifecycle.InviteManagerImpl;
 import com.skyframework.islandcore.island.registry.IslandRegistryImpl;
 import com.skyframework.islandcore.net.ClientSyncNotifier;
 import com.skyframework.islandcore.net.ServerPacketHandlers;
+import com.skyframework.islandcore.party.lifecycle.PartyInviteManager;
+import com.skyframework.islandcore.party.lifecycle.PartyInviteManagerImpl;
+import com.skyframework.islandcore.party.registry.PartyRegistry;
+import com.skyframework.islandcore.party.registry.PartyRegistryImpl;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
 import com.skyframework.islandcore.player.FirstJoinTracker;
@@ -97,6 +102,8 @@ public class IslandCoreMod implements ModInitializer {
 	public static FarmingConfig FARMING_CONFIG;
 	public static ServerFlagDefaults SERVER_FLAG_DEFAULTS;
 	public static ExceptionGroupRegistry EXCEPTION_GROUP_REGISTRY;
+	public static PartyRegistry PARTY_REGISTRY;
+	public static PartyInviteManager PARTY_INVITE_MANAGER;
 
 	@Override
 	public void onInitialize() {
@@ -129,9 +136,14 @@ public class IslandCoreMod implements ModInitializer {
 		FARMING_CONFIG = new FarmingConfig();
 		SERVER_FLAG_DEFAULTS = new ServerFlagDefaults();
 		EXCEPTION_GROUP_REGISTRY = new ExceptionGroupRegistry();
+		// Independent of ISLAND_REGISTRY (see PartyRegistryImpl's class comment): its own
+		// self-contained SERVER_STARTED hook loads party storage, same pattern as DIMENSION_REGISTRY.
+		PARTY_REGISTRY = new PartyRegistryImpl();
+		PARTY_INVITE_MANAGER = new PartyInviteManagerImpl();
 		ProtectionListeners.register();
 		IslandCommand.register();
 		DimensionCommand.register();
+		PartyCommand.register();
 		RtpCommand.register();
 		SpawnCommand.register();
 		FarmingCommand.register();
@@ -149,6 +161,7 @@ public class IslandCoreMod implements ModInitializer {
 
 		// Extra safety net on shutdown; individual mutations already persist themselves.
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> ISLAND_REGISTRY.saveAll());
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> PARTY_REGISTRY.saveAll());
 
 		TELEPORT_MANAGER = new TeleportManagerImpl(new VanillaTeleportBackend());
 		ServerTickEvents.END_SERVER_TICK.register(server -> TELEPORT_MANAGER.tickAll());

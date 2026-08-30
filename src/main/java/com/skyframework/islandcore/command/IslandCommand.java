@@ -20,6 +20,7 @@ import com.skyframework.islandcore.island.lifecycle.MembershipService;
 import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.protection.exception.ExceptionGroup;
+import com.skyframework.islandcore.protection.exception.ExceptionGroupCategory;
 import com.skyframework.islandcore.protection.flag.Flag;
 import com.skyframework.islandcore.protection.flag.FlagCategory;
 import com.skyframework.islandcore.protection.flag.FlagRegistry;
@@ -103,6 +104,13 @@ public class IslandCommand {
 						.then(CommandManager.literal("untrust")
 								.then(CommandManager.argument("player", EntityArgumentType.player())
 										.executes(IslandCommand::executeUntrust)))
+						.then(CommandManager.literal("ally")
+								.then(CommandManager.literal("add")
+										.then(CommandManager.argument("player", EntityArgumentType.player())
+												.executes(IslandCommand::executeAllyAdd)))
+								.then(CommandManager.literal("remove")
+										.then(CommandManager.argument("player", EntityArgumentType.player())
+												.executes(IslandCommand::executeAllyRemove))))
 						.then(CommandManager.literal("kick")
 								.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
 										.executes(IslandCommand::executeKick)))
@@ -486,16 +494,42 @@ public class IslandCommand {
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("=== Grupos de excepción de tu isla ==="), false);
-		for (ExceptionGroup group : groups) {
+		source.sendFeedback(() -> Text.literal("=== Grupos de Excepción de tu Isla ===").formatted(Formatting.BOLD, Formatting.AQUA), false);
+
+		sendExceptionGroupSection(source, island, groups, ExceptionGroupCategory.BLOCK, "Bloques");
+		sendExceptionGroupSection(source, island, groups, ExceptionGroupCategory.ENTITY, "Entidades");
+
+		return groups.size();
+	}
+
+	// Same titled-section look as executeFlagsList (see IslandMessages#sectionTitle), split by
+	// ExceptionGroupCategory (BLOCK/ENTITY) instead of by role since exception groups have no role
+	// axis. A section with no groups is skipped entirely rather than printed empty.
+	private static void sendExceptionGroupSection(
+			ServerCommandSource source, Island island, List<ExceptionGroup> groups, ExceptionGroupCategory category, String title) {
+		List<ExceptionGroup> inCategory = groups.stream().filter(group -> group.getCategory() == category).toList();
+		if (inCategory.isEmpty()) {
+			return;
+		}
+
+		IslandMessages.sectionTitle(source, title, Formatting.GOLD);
+		for (ExceptionGroup group : inCategory) {
 			Boolean override = island.getExceptionGroupOverride(group.getId());
 			boolean effective = override != null ? override : group.isDefaultEnabled();
 			String configurableSuffix = group.isOwnerConfigurable() ? "" : " (solo gestionable por un admin)";
-			source.sendFeedback(() -> Text.literal(group.getId() + " (" + group.getCategory() + "): "
-					+ (effective ? "activo" : "inactivo") + configurableSuffix), false);
-		}
 
-		return groups.size();
+			MutableText line = Text.literal(group.getId()).formatted(Formatting.WHITE)
+					.append(Text.literal(": ").formatted(Formatting.GRAY))
+					.append(exceptionStateText(effective))
+					.append(Text.literal(configurableSuffix).formatted(Formatting.GRAY));
+			source.sendFeedback(() -> line, false);
+		}
+	}
+
+	private static Text exceptionStateText(boolean effective) {
+		return effective
+				? Text.literal("activo").formatted(Formatting.GREEN)
+				: Text.literal("inactivo").formatted(Formatting.RED);
 	}
 
 	private static int executeExceptionsSet(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
@@ -724,6 +758,40 @@ public class IslandCommand {
 
 		String targetName = target.getGameProfile().getName();
 		source.sendFeedback(() -> Text.literal(targetName + " ya no tiene acceso especial a tu isla."), false);
+
+		return 1;
+	}
+
+	private static int executeAllyAdd(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity executor = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		ActionOutcome<Void> outcome = MembershipService.allyAdd(executor, target.getUuid());
+		if (!outcome.success()) {
+			source.sendError(Text.literal("No tienes una isla."));
+			return 0;
+		}
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal(targetName + " ahora es aliado de tu isla."), false);
+
+		return 1;
+	}
+
+	private static int executeAllyRemove(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity executor = source.getPlayerOrThrow();
+		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+
+		ActionOutcome<Void> outcome = MembershipService.allyRemove(executor, target.getUuid());
+		if (!outcome.success()) {
+			source.sendError(Text.literal("No tienes una isla."));
+			return 0;
+		}
+
+		String targetName = target.getGameProfile().getName();
+		source.sendFeedback(() -> Text.literal(targetName + " ya no es aliado de tu isla."), false);
 
 		return 1;
 	}

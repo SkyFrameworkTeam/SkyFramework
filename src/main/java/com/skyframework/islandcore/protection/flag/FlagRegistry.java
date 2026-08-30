@@ -36,6 +36,9 @@ public final class FlagRegistry {
 		table.put(IslandRole.OWNER, TriState.ALLOW);
 		table.put(IslandRole.MEMBER, denyMemberAndTrusted ? TriState.DENY : TriState.ALLOW);
 		table.put(IslandRole.TRUSTED, denyMemberAndTrusted ? TriState.DENY : TriState.ALLOW);
+		// Same default as VISITOR: fully denied until the island owner explicitly opens this flag
+		// for ALLY via /island flags set <flag> ally allow.
+		table.put(IslandRole.ALLY, TriState.DENY);
 		table.put(IslandRole.VISITOR, TriState.DENY);
 		table.put(IslandRole.DENIED, TriState.DENY);
 

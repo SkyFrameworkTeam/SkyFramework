@@ -1,8 +1,10 @@
 package com.skyframework.islandcore.island.model;
 
+import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.api.island.IslandPermission;
 import com.skyframework.islandcore.api.island.IslandState;
+import com.skyframework.islandcore.party.model.PartyData;
 import com.skyframework.islandcore.protection.flag.TriState;
 
 import net.minecraft.registry.RegistryKey;
@@ -353,11 +355,45 @@ public class IslandData implements Island {
 			return IslandRole.OWNER;
 		}
 
-		return members.stream()
+		Optional<IslandMember> explicit = members.stream()
 				.filter(member -> member.playerUuid().equals(playerUuid))
-				.map(IslandMember::role)
-				.findFirst()
-				.orElse(IslandRole.VISITOR);
+				.findFirst();
+
+		// An explicit DENIED/TRUSTED/MEMBER entry always wins over party-derived roles below,
+		// matching the real hierarchy documented on IslandRole (OWNER > DENIED > TRUSTED > MEMBER >
+		// ALLY > VISITOR): the owner's explicit block or trust decision about one specific player
+		// must never be silently overridden by that player's party membership. ALLY is deliberately
+		// the one explicit role checked AFTER the party-MEMBER lookup: party membership should
+		// upgrade an explicit ALLY entry to MEMBER, not the other way around.
+		if (explicit.isPresent()) {
+			IslandRole role = explicit.get().role();
+			if (role == IslandRole.DENIED || role == IslandRole.TRUSTED || role == IslandRole.MEMBER) {
+				return role;
+			}
+		}
+
+		// The one justified cross-package lookup from island/ into party/ — same justification
+		// pattern as DimensionRegistryImpl's single read-only lookup into island/ for Spawn
+		// evacuation (see that class's "Eviction note"). Only ever reads PartyRegistry, never
+		// mutates it.
+		Optional<PartyData> ownerParty = IslandCoreMod.PARTY_REGISTRY.getPartyOf(ownerUuid);
+		Optional<PartyData> playerParty = IslandCoreMod.PARTY_REGISTRY.getPartyOf(playerUuid);
+
+		if (ownerParty.isPresent() && playerParty.isPresent()
+				&& ownerParty.get().getPartyId().equals(playerParty.get().getPartyId())) {
+			return IslandRole.MEMBER;
+		}
+
+		if (explicit.isPresent() && explicit.get().role() == IslandRole.ALLY) {
+			return IslandRole.ALLY;
+		}
+
+		if (ownerParty.isPresent() && playerParty.isPresent()
+				&& ownerParty.get().getAlliedPartyIds().contains(playerParty.get().getPartyId())) {
+			return IslandRole.ALLY;
+		}
+
+		return IslandRole.VISITOR;
 	}
 
 	@Override
@@ -386,7 +422,7 @@ public class IslandData implements Island {
 		return switch (role) {
 			case OWNER -> true;
 			case MEMBER, TRUSTED -> permission != IslandPermission.REDSTONE;
-			case VISITOR, DENIED -> false;
+			case ALLY, VISITOR, DENIED -> false;
 		};
 	}
 

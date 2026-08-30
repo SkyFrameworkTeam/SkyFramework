@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 // Loaded from config/islandcore/exception_groups.json on SERVER_STARTED. Ships with 4 example
-// groups (Doors, Chests, Redstone, Animals), all off by default, if the file doesn't exist yet.
+// groups (doors, chests, redstone, animals), all off by default, if the file doesn't exist yet.
 public class ExceptionGroupRegistry {
 
 	private static final String CONFIG_FILE_NAME = "exception_groups.json";
@@ -81,17 +81,20 @@ public class ExceptionGroupRegistry {
 	}
 
 	private void writeDefault(Path configFile) {
+		// Lowercase ids (as of this sprint): easier to type in commands, and /island exceptions set
+		// now normalizes its own "group" argument to lowercase too (see IslandCommand), so this is
+		// the canonical case going forward.
 		List<ExceptionGroup> defaults = List.of(
-				new ExceptionGroup("Doors", ExceptionGroupCategory.BLOCK,
+				new ExceptionGroup("doors", ExceptionGroupCategory.BLOCK,
 						List.of("#minecraft:doors", "#minecraft:trapdoors", "#minecraft:fence_gates"),
 						true, false, false, false, true),
-				new ExceptionGroup("Chests", ExceptionGroupCategory.BLOCK,
+				new ExceptionGroup("chests", ExceptionGroupCategory.BLOCK,
 						List.of("minecraft:chest", "minecraft:trapped_chest", "minecraft:barrel", "#minecraft:shulker_boxes"),
 						true, false, false, false, true),
-				new ExceptionGroup("Redstone", ExceptionGroupCategory.BLOCK,
+				new ExceptionGroup("redstone", ExceptionGroupCategory.BLOCK,
 						List.of("#minecraft:buttons", "minecraft:lever"),
 						true, false, false, false, true),
-				new ExceptionGroup("Animals", ExceptionGroupCategory.ENTITY,
+				new ExceptionGroup("animals", ExceptionGroupCategory.ENTITY,
 						List.of("minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:cat", "minecraft:wolf", "minecraft:parrot"),
 						true, false, false, false, true)
 		);

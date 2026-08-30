@@ -163,6 +163,7 @@ public final class IslandMessages {
 			case OWNER -> Formatting.GOLD;
 			case MEMBER -> Formatting.GREEN;
 			case TRUSTED -> Formatting.AQUA;
+			case ALLY -> Formatting.YELLOW;
 			case VISITOR, DENIED -> Formatting.GRAY;
 		};
 	}

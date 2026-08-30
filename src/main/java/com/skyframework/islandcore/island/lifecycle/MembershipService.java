@@ -125,6 +125,34 @@ public final class MembershipService {
 		return ActionOutcome.ok();
 	}
 
+	// Same shape as trust()/untrust() above, but assigning/removing the ALLY role instead of
+	// TRUSTED — used by "/island ally add/remove" (see IslandRole for how ALLY differs: same
+	// per-flag defaults as VISITOR unless the owner opens a flag for it explicitly).
+	public static ActionOutcome<Void> allyAdd(ServerPlayerEntity executor, UUID targetUuid) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		IslandMember member = new IslandMember(targetUuid, IslandRole.ALLY, Instant.now(), EnumSet.noneOf(IslandPermission.class));
+		IslandCoreMod.ISLAND_REGISTRY.addMember(island.getIslandId(), member);
+
+		return ActionOutcome.ok();
+	}
+
+	public static ActionOutcome<Void> allyRemove(ServerPlayerEntity executor, UUID targetUuid) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), targetUuid);
+
+		return ActionOutcome.ok();
+	}
+
 	// Admin-scoped variants of trust()/untrust() above, for the Spawn admin block: they operate on
 	// an explicit island rather than resolving it from the executor's own ownership, since the
 	// operator running /island admin spawn trust/untrust never owns the Spawn island themselves.
