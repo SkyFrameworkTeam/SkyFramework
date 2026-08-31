@@ -69,6 +69,8 @@ import com.skyframework.islandcore.net.island.IslandSnapshotBuilder;
 import com.skyframework.islandcore.net.island.IslandSnapshotRequestC2S;
 import com.skyframework.islandcore.net.island.IslandSnapshotS2C;
 import com.skyframework.islandcore.net.island.IslandUpgradeC2S;
+import com.skyframework.islandcore.net.member.MemberAllyAddC2S;
+import com.skyframework.islandcore.net.member.MemberAllyRemoveC2S;
 import com.skyframework.islandcore.net.member.MemberInviteAcceptC2S;
 import com.skyframework.islandcore.net.member.MemberInviteC2S;
 import com.skyframework.islandcore.net.member.MemberRemoveC2S;
@@ -201,6 +203,8 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playC2S().register(MemberInviteAcceptC2S.ID, MemberInviteAcceptC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(MemberTrustC2S.ID, MemberTrustC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(MemberRemoveC2S.ID, MemberRemoveC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(MemberAllyAddC2S.ID, MemberAllyAddC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(MemberAllyRemoveC2S.ID, MemberAllyRemoveC2S.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(TeleportRequestC2S.ID, TeleportRequestC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(TeleportStatusRequestC2S.ID, TeleportStatusRequestC2S.CODEC);
@@ -341,6 +345,27 @@ public final class ServerPacketHandlers {
 			ActionOutcome<Void> outcome = MembershipService.removeMember(player, payload.targetUuid(), context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
+
+		registerGuarded(MemberAllyAddC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+
+			Optional<UUID> targetUuid = MembershipService.resolvePlayerUuid(payload.targetName(), context.server());
+			if (targetUuid.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.TARGET_NOT_FOUND));
+				return;
+			}
+
+			// Same entry point "/island ally add" calls.
+			ActionOutcome<Void> outcome = MembershipService.allyAdd(player, targetUuid.get());
+			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
+
+		registerGuarded(MemberAllyRemoveC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			// Same entry point "/island ally remove" calls.
+			ActionOutcome<Void> outcome = MembershipService.allyRemove(player, payload.targetUuid());
+			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
 	}
 
 	private static void registerTeleportHandlers() {
@@ -456,7 +481,7 @@ public final class ServerPacketHandlers {
 			ServerPlayerEntity player = context.player();
 			PartyStatusS2C response = IslandCoreMod.PARTY_REGISTRY.getPartyOf(player.getUuid())
 					.map(party -> PartyStatusBuilder.build(context.server(), party))
-					.orElseGet(PartyStatusS2C::absent);
+					.orElseGet(() -> PartyStatusBuilder.buildAbsent(context.server(), player.getUuid()));
 			ServerPlayNetworking.send(player, response);
 		});
 

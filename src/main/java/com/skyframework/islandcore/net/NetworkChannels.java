@@ -47,6 +47,8 @@ public final class NetworkChannels {
 	public static final Identifier MEMBER_INVITE_ACCEPT_C2S = Identifier.of("islandcore", "member_invite_accept_c2s");
 	public static final Identifier MEMBER_TRUST_C2S = Identifier.of("islandcore", "member_trust_c2s");
 	public static final Identifier MEMBER_REMOVE_C2S = Identifier.of("islandcore", "member_remove_c2s");
+	public static final Identifier MEMBER_ALLY_ADD_C2S = Identifier.of("islandcore", "member_ally_add_c2s");
+	public static final Identifier MEMBER_ALLY_REMOVE_C2S = Identifier.of("islandcore", "member_ally_remove_c2s");
 
 	public static final Identifier TELEPORT_REQUEST_C2S = Identifier.of("islandcore", "teleport_request_c2s");
 	public static final Identifier TELEPORT_STATUS_REQUEST_C2S = Identifier.of("islandcore", "teleport_status_request_c2s");

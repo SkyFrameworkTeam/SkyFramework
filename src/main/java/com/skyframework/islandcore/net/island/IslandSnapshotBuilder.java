@@ -53,8 +53,14 @@ public final class IslandSnapshotBuilder {
 		members.add(new IslandSnapshotS2C.MemberEntry(
 				island.getOwnerUuid(), resolveName(server, island.getOwnerUuid()), IslandRole.OWNER.name()));
 		for (IslandMember member : island.getMembers()) {
-			// Mirrors IslandMessages' member sections: VISITOR/DENIED aren't shown as members.
-			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED) {
+			// MEMBER/TRUSTED/ALLY are real, explicitly-granted entries (mirrors IslandMessages'
+			// member sections, extended for ALLY — added alongside the party sprint's
+			// "/island ally add"). VISITOR/DENIED aren't shown as members. Note this only ever
+			// contains explicit per-player ALLY grants: an ALLY resolved implicitly from a party
+			// alliance (see IslandData#getRoleOf) is never stored as an IslandMember entry, so it
+			// never appears here either — same as party-derived MEMBER status already didn't before
+			// this change.
+			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED && member.role() != IslandRole.ALLY) {
 				continue;
 			}
 			members.add(new IslandSnapshotS2C.MemberEntry(
