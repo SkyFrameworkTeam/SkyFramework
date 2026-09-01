@@ -17,8 +17,11 @@ public final class FlagRegistry {
 
 	private static final Map<String, Flag> FLAGS = new LinkedHashMap<>();
 
-	public static final Flag BUILD = registerRoleBased("build", false);
-	public static final Flag BREAK = registerRoleBased("break", false);
+	// Merges the old separate "build"/"break" flags into one: placing and breaking blocks are the
+	// same trust decision in practice (an owner who lets a member build almost always also lets
+	// them break what they placed), and having them as two flags/two rows in the UI without a clear
+	// distinction was confusing more than it helped. Same default table "build" had.
+	public static final Flag CONSTRUCCION = registerRoleBased("construccion", false);
 	public static final Flag INTERACT = registerRoleBased("interact", false);
 	public static final Flag CONTAINERS = registerRoleBased("containers", false);
 	public static final Flag ENTITIES = registerRoleBased("entities", false);

@@ -32,12 +32,12 @@ public class AccessControllerImpl implements AccessController {
 
 	@Override
 	public boolean canBreak(UUID playerUuid, ServerWorld world, BlockPos pos) {
-		return checkBlock(playerUuid, world, pos, IslandPermission.BREAK, FlagRegistry.BREAK, true);
+		return checkBlock(playerUuid, world, pos, IslandPermission.CONSTRUCCION, FlagRegistry.CONSTRUCCION, true);
 	}
 
 	@Override
 	public boolean canPlace(UUID playerUuid, ServerWorld world, BlockPos pos) {
-		return checkBlock(playerUuid, world, pos, IslandPermission.BUILD, FlagRegistry.BUILD, false);
+		return checkBlock(playerUuid, world, pos, IslandPermission.CONSTRUCCION, FlagRegistry.CONSTRUCCION, false);
 	}
 
 	@Override
@@ -82,7 +82,7 @@ public class AccessControllerImpl implements AccessController {
 		}
 
 		Identifier blockId = Registries.BLOCK.getId(world.getBlockState(pos).getBlock());
-		Optional<ExceptionGroup> exception = ExceptionResolver.resolve(island, blockId, ExceptionGroupCategory.BLOCK);
+		Optional<ExceptionGroup> exception = ExceptionResolver.resolve(island, playerUuid, blockId, ExceptionGroupCategory.BLOCK);
 		if (exception.isPresent()) {
 			ExceptionGroup group = exception.get();
 			if (!group.isRequireEmptyHand() || isMainHandEmpty(world, playerUuid)) {
@@ -91,12 +91,12 @@ public class AccessControllerImpl implements AccessController {
 			// requireEmptyHand not met: this exception doesn't apply, fall through to the normal chain.
 		}
 
-		// BUILD_PROTECTION only ever relaxes BUILD/BREAK — INTERACT/CONTAINERS/ENTITIES keep
-		// following the flag check unconditionally, protection setting or not. A TRUSTED/OWNER
-		// member can already build regardless of this setting via FlagResolver's own role table
-		// below, so this only changes the outcome for players who'd otherwise be denied.
-		boolean isBuildOrBreak = permission == IslandPermission.BUILD || permission == IslandPermission.BREAK;
-		if (isBuildOrBreak && !island.getSetting(IslandSetting.BUILD_PROTECTION)) {
+		// BUILD_PROTECTION only ever relaxes CONSTRUCCION (placing/breaking) — INTERACT/CONTAINERS/
+		// ENTITIES keep following the flag check unconditionally, protection setting or not. A
+		// TRUSTED/OWNER member can already build regardless of this setting via FlagResolver's own
+		// role table below, so this only changes the outcome for players who'd otherwise be denied.
+		boolean isConstruccion = permission == IslandPermission.CONSTRUCCION;
+		if (isConstruccion && !island.getSetting(IslandSetting.BUILD_PROTECTION)) {
 			return true;
 		}
 
@@ -133,7 +133,7 @@ public class AccessControllerImpl implements AccessController {
 		}
 
 		Identifier entityTypeId = Registries.ENTITY_TYPE.getId(entity.getType());
-		Optional<ExceptionGroup> exception = ExceptionResolver.resolve(island, entityTypeId, ExceptionGroupCategory.ENTITY);
+		Optional<ExceptionGroup> exception = ExceptionResolver.resolve(island, playerUuid, entityTypeId, ExceptionGroupCategory.ENTITY);
 		if (exception.isPresent()) {
 			ExceptionGroup group = exception.get();
 			if (!group.isRequireEmptyHand() || isMainHandEmpty(world, playerUuid)) {
@@ -155,7 +155,15 @@ public class AccessControllerImpl implements AccessController {
 			return true;
 		}
 
-		return FlagResolver.resolveForPlayer(island, playerUuid, FlagRegistry.ENTITIES);
+		// ENTITIES governs attacking ONLY (useAllowBreak=true — combat on a non-living target here,
+		// e.g. an item frame or armor stand, since the LivingEntity attack case already returned
+		// above). Any non-violent interaction (useAllowBreak=false — mounting, taming, feeding,
+		// leashing, and everything else canInteractEntity covers) falls through to INTERACT instead,
+		// the same generic flag canInteractBlock already uses for blocks — this used to
+		// unconditionally check ENTITIES here regardless of useAllowBreak, which meant a role denied
+		// only ENTITIES (combat) also couldn't pet/tame/feed anything, and a role allowed INTERACT
+		// but not ENTITIES still couldn't either; the two actions are now independent.
+		return FlagResolver.resolveForPlayer(island, playerUuid, useAllowBreak ? FlagRegistry.ENTITIES : FlagRegistry.INTERACT);
 	}
 
 	private static boolean isMainHandEmpty(ServerWorld world, UUID playerUuid) {

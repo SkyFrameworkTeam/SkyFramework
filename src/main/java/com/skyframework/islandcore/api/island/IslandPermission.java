@@ -1,8 +1,8 @@
 package com.skyframework.islandcore.api.island;
 
 public enum IslandPermission {
-	BUILD,
-	BREAK,
+	// Merged from the old separate BUILD/BREAK — see FlagRegistry.CONSTRUCCION.
+	CONSTRUCCION,
 	INTERACT,
 	CONTAINERS,
 	ENTITIES,

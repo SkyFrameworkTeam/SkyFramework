@@ -15,6 +15,10 @@ import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.island.model.IslandType;
 import com.skyframework.islandcore.island.spatial.SpatialIndex;
 import com.skyframework.islandcore.island.spatial.SpatialIndexImpl;
+import com.skyframework.islandcore.protection.flag.Flag;
+import com.skyframework.islandcore.protection.flag.FlagCategory;
+import com.skyframework.islandcore.protection.flag.FlagPreset;
+import com.skyframework.islandcore.protection.flag.FlagRegistry;
 import com.skyframework.islandcore.protection.flag.TriState;
 import com.skyframework.islandcore.storage.IslandStorage;
 import com.skyframework.islandcore.storage.nbt.NbtIslandStorage;
@@ -313,12 +317,42 @@ public class IslandRegistryImpl implements IslandRegistryApi {
 	}
 
 	@Override
-	public void updateExceptionGroupOverride(UUID islandId, String groupId, Boolean value) {
+	public void applyFlagPreset(UUID islandId, String flagId, String preset) {
 		IslandData island = islandsById.get(islandId);
-		if (island != null) {
-			island.setExceptionGroupOverride(groupId, value);
-			saveIfStorageReady(island);
+		if (island == null) {
+			return;
 		}
+
+		Optional<Flag> maybeFlag = FlagRegistry.get(flagId);
+		if (maybeFlag.isEmpty() || maybeFlag.get().getCategory() != FlagCategory.ROLE_BASED) {
+			throw new IllegalArgumentException("El preset solo puede aplicarse a un flag por rol válido: " + flagId);
+		}
+
+		FlagPreset resolvedPreset = FlagPreset.fromId(preset)
+				.orElseThrow(() -> new IllegalArgumentException(
+						"Preset desconocido: " + preset + ". Usa nadie, miembros, aliados o todos."));
+
+		island.setRoleFlagOverridePreset(flagId, resolvedPreset.toRoleValues());
+		saveIfStorageReady(island);
+	}
+
+	@Override
+	public void applyExceptionGroupPreset(UUID islandId, String groupId, String preset) {
+		IslandData island = islandsById.get(islandId);
+		if (island == null) {
+			return;
+		}
+
+		if (IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(groupId).isEmpty()) {
+			throw new IllegalArgumentException("Grupo de excepción desconocido: " + groupId);
+		}
+
+		FlagPreset resolvedPreset = FlagPreset.fromId(preset)
+				.orElseThrow(() -> new IllegalArgumentException(
+						"Preset desconocido: " + preset + ". Usa nadie, miembros, aliados o todos."));
+
+		island.setRoleExceptionGroupOverridePreset(groupId, resolvedPreset.toRoleValues());
+		saveIfStorageReady(island);
 	}
 
 	@Override

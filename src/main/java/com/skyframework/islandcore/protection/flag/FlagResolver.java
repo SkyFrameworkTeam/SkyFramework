@@ -49,7 +49,20 @@ public final class FlagResolver {
 			return islandOverride;
 		}
 
-		Optional<TriState> serverDefault = IslandCoreMod.SERVER_FLAG_DEFAULTS.getDefault(flag.getId());
+		Optional<TriState> serverDefault = IslandCoreMod.SERVER_FLAG_DEFAULTS.getRoleBasedDefault(flag.getId(), role);
+		if (serverDefault.isPresent()) {
+			return serverDefault.get();
+		}
+
+		return flag.codeDefaultForRole(role);
+	}
+
+	// ROLE_BASED flags only. Server-layer-only resolution (skips the island-override layer
+	// entirely — there's no specific island in this context): what a BRAND NEW island's role would
+	// resolve to today, given only the server default and the flag's own hardcoded table. Used by
+	// AdminDefaultsBuilder.
+	public static TriState resolveServerDefaultForRole(IslandRole role, Flag flag) {
+		Optional<TriState> serverDefault = IslandCoreMod.SERVER_FLAG_DEFAULTS.getRoleBasedDefault(flag.getId(), role);
 		if (serverDefault.isPresent()) {
 			return serverDefault.get();
 		}
@@ -64,7 +77,7 @@ public final class FlagResolver {
 			return islandOverride.toBoolean();
 		}
 
-		Optional<TriState> serverDefault = IslandCoreMod.SERVER_FLAG_DEFAULTS.getDefault(flag.getId());
+		Optional<TriState> serverDefault = IslandCoreMod.SERVER_FLAG_DEFAULTS.getGlobalDefault(flag.getId());
 		if (serverDefault.isPresent()) {
 			return serverDefault.get().toBoolean();
 		}

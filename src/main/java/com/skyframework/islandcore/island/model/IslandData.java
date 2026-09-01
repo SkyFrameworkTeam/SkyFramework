@@ -50,7 +50,7 @@ public class IslandData implements Island {
 	private final Map<IslandSetting, Boolean> settings = new EnumMap<>(IslandSetting.class);
 	private final Map<String, TriState> globalFlagOverrides = new HashMap<>();
 	private final Map<String, Map<IslandRole, TriState>> roleFlagOverrides = new HashMap<>();
-	private final Map<String, Boolean> exceptionGroupOverrides = new HashMap<>();
+	private final Map<String, Map<IslandRole, TriState>> roleExceptionGroupOverrides = new HashMap<>();
 
 	private final Instant createdAt;
 	private Instant updatedAt;
@@ -115,7 +115,7 @@ public class IslandData implements Island {
 			String currentBiomeId,
 			Map<String, TriState> globalFlagOverrides,
 			Map<String, Map<IslandRole, TriState>> roleFlagOverrides,
-			Map<String, Boolean> exceptionGroupOverrides
+			Map<String, Map<IslandRole, TriState>> roleExceptionGroupOverrides
 	) {
 		this(islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
 				islandSize, plotSize, islandType, homeLocation, state, createdAt, currentBiomeId);
@@ -125,7 +125,7 @@ public class IslandData implements Island {
 		this.lastBiomeChangeAt = lastBiomeChangeAt;
 		this.globalFlagOverrides.putAll(globalFlagOverrides);
 		this.roleFlagOverrides.putAll(roleFlagOverrides);
-		this.exceptionGroupOverrides.putAll(exceptionGroupOverrides);
+		this.roleExceptionGroupOverrides.putAll(roleExceptionGroupOverrides);
 	}
 
 	@Override
@@ -319,16 +319,50 @@ public class IslandData implements Island {
 		touch();
 	}
 
-	@Override
-	public Boolean getExceptionGroupOverride(String groupId) {
-		return exceptionGroupOverrides.get(groupId);
+	// The finer-grained write path the comment above anticipated: applies a mixed set of per-role
+	// overrides for one flag in a single atomic update (one touch(), one caller-side persist) —
+	// used by IslandRegistryImpl#applyFlagPreset for the 4-role preset shortcuts (nadie/miembros/
+	// aliados/todos). Any role NOT present in valuesByRole (i.e. OWNER/DENIED, which presets never
+	// touch) keeps whatever override it already had, untouched.
+	public void setRoleFlagOverridePreset(String flagId, Map<IslandRole, TriState> valuesByRole) {
+		Map<IslandRole, TriState> perRole = roleFlagOverrides.computeIfAbsent(flagId, id -> new EnumMap<>(IslandRole.class));
+		for (Map.Entry<IslandRole, TriState> entry : valuesByRole.entrySet()) {
+			if (entry.getValue() == TriState.DEFAULT) {
+				perRole.remove(entry.getKey());
+			} else {
+				perRole.put(entry.getKey(), entry.getValue());
+			}
+		}
+		if (perRole.isEmpty()) {
+			roleFlagOverrides.remove(flagId);
+		}
+		touch();
 	}
 
-	public void setExceptionGroupOverride(String groupId, Boolean value) {
-		if (value == null) {
-			exceptionGroupOverrides.remove(groupId);
-		} else {
-			exceptionGroupOverrides.put(groupId, value);
+	@Override
+	public TriState getRoleExceptionGroupOverride(String groupId, IslandRole role) {
+		Map<IslandRole, TriState> perRole = roleExceptionGroupOverrides.get(groupId);
+		if (perRole == null) {
+			return TriState.DEFAULT;
+		}
+		return perRole.getOrDefault(role, TriState.DEFAULT);
+	}
+
+	// The finer-grained write path — used by IslandRegistryImpl#applyExceptionGroupPreset for the
+	// 4-role preset shortcuts (nadie/miembros/aliados/todos), an exact mirror of
+	// setRoleFlagOverridePreset above. Any role NOT present in valuesByRole (OWNER/DENIED, which
+	// presets never touch) keeps whatever override it already had, untouched.
+	public void setRoleExceptionGroupOverridePreset(String groupId, Map<IslandRole, TriState> valuesByRole) {
+		Map<IslandRole, TriState> perRole = roleExceptionGroupOverrides.computeIfAbsent(groupId, id -> new EnumMap<>(IslandRole.class));
+		for (Map.Entry<IslandRole, TriState> entry : valuesByRole.entrySet()) {
+			if (entry.getValue() == TriState.DEFAULT) {
+				perRole.remove(entry.getKey());
+			} else {
+				perRole.put(entry.getKey(), entry.getValue());
+			}
+		}
+		if (perRole.isEmpty()) {
+			roleExceptionGroupOverrides.remove(groupId);
 		}
 		touch();
 	}
@@ -345,8 +379,8 @@ public class IslandData implements Island {
 		return Collections.unmodifiableMap(roleFlagOverrides);
 	}
 
-	public Map<String, Boolean> getExceptionGroupOverrides() {
-		return Collections.unmodifiableMap(exceptionGroupOverrides);
+	public Map<String, Map<IslandRole, TriState>> getRoleExceptionGroupOverrides() {
+		return Collections.unmodifiableMap(roleExceptionGroupOverrides);
 	}
 
 	@Override

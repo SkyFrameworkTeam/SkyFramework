@@ -1,5 +1,7 @@
 package com.skyframework.islandcore.protection.exception;
 
+import com.skyframework.islandcore.protection.flag.FlagPreset;
+
 import java.util.List;
 
 // Immutable definition of one exception group. Instances only ever come from
@@ -13,7 +15,11 @@ public final class ExceptionGroup {
 	private final boolean allowInteract;
 	private final boolean allowBreak;
 	private final boolean requireEmptyHand;
-	private final boolean defaultEnabled;
+	// The "código" layer in the exception resolution chain (isla -> servidor -> código), same role
+	// Flag's own hardcoded roleDefaults table plays for flags — see ExceptionResolver. Translated
+	// to VISITOR/ALLY/MEMBER/TRUSTED values via FlagPreset#toRoleValues, exactly like every other
+	// preset in this codebase.
+	private final FlagPreset defaultPreset;
 	private final boolean ownerConfigurable;
 
 	public ExceptionGroup(
@@ -23,7 +29,7 @@ public final class ExceptionGroup {
 			boolean allowInteract,
 			boolean allowBreak,
 			boolean requireEmptyHand,
-			boolean defaultEnabled,
+			FlagPreset defaultPreset,
 			boolean ownerConfigurable
 	) {
 		this.id = id;
@@ -33,7 +39,7 @@ public final class ExceptionGroup {
 		this.allowInteract = allowInteract;
 		this.allowBreak = allowBreak;
 		this.requireEmptyHand = requireEmptyHand;
-		this.defaultEnabled = defaultEnabled;
+		this.defaultPreset = defaultPreset;
 		this.ownerConfigurable = ownerConfigurable;
 	}
 
@@ -67,8 +73,8 @@ public final class ExceptionGroup {
 		return requireEmptyHand;
 	}
 
-	public boolean isDefaultEnabled() {
-		return defaultEnabled;
+	public FlagPreset getDefaultPreset() {
+		return defaultPreset;
 	}
 
 	public boolean isOwnerConfigurable() {

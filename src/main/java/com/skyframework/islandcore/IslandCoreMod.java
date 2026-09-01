@@ -43,6 +43,7 @@ import com.skyframework.islandcore.protection.DamageProtectionListener;
 import com.skyframework.islandcore.protection.DeniedActionThrottler;
 import com.skyframework.islandcore.protection.ProtectionListeners;
 import com.skyframework.islandcore.protection.exception.ExceptionGroupRegistry;
+import com.skyframework.islandcore.protection.exception.ServerExceptionDefaults;
 import com.skyframework.islandcore.protection.flag.ServerFlagDefaults;
 import com.skyframework.islandcore.rtp.RtpCommand;
 import com.skyframework.islandcore.rtp.RtpConfig;
@@ -103,6 +104,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static FarmingConfig FARMING_CONFIG;
 	public static ServerFlagDefaults SERVER_FLAG_DEFAULTS;
 	public static ExceptionGroupRegistry EXCEPTION_GROUP_REGISTRY;
+	public static ServerExceptionDefaults SERVER_EXCEPTION_DEFAULTS;
 	public static PartyRegistry PARTY_REGISTRY;
 	public static PartyInviteManager PARTY_INVITE_MANAGER;
 
@@ -137,6 +139,7 @@ public class IslandCoreMod implements ModInitializer {
 		FARMING_CONFIG = new FarmingConfig();
 		SERVER_FLAG_DEFAULTS = new ServerFlagDefaults();
 		EXCEPTION_GROUP_REGISTRY = new ExceptionGroupRegistry();
+		SERVER_EXCEPTION_DEFAULTS = new ServerExceptionDefaults();
 		// Independent of ISLAND_REGISTRY (see PartyRegistryImpl's class comment): its own
 		// self-contained SERVER_STARTED hook loads party storage, same pattern as DIMENSION_REGISTRY.
 		PARTY_REGISTRY = new PartyRegistryImpl();

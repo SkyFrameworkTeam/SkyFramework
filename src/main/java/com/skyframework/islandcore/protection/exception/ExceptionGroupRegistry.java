@@ -8,6 +8,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import com.skyframework.islandcore.IslandCoreMod;
+import com.skyframework.islandcore.protection.flag.FlagPreset;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -25,7 +26,11 @@ import java.util.Map;
 import java.util.Optional;
 
 // Loaded from config/islandcore/exception_groups.json on SERVER_STARTED. Ships with 4 example
-// groups (doors, chests, redstone, animals), all off by default, if the file doesn't exist yet.
+// groups (doors, chests, redstone, animals), all off (preset "nadie") by default, if the file
+// doesn't exist yet. This file is the "código" layer of the exception resolution chain (see
+// ExceptionResolver) — an admin edits it by hand to change a group's compiled default preset;
+// runtime tuning happens one layer up via ServerExceptionDefaults ("/island admin exceptions
+// set-default"), which is why this registry no longer exposes any in-game mutator.
 public class ExceptionGroupRegistry {
 
 	private static final String CONFIG_FILE_NAME = "exception_groups.json";
@@ -74,10 +79,25 @@ public class ExceptionGroupRegistry {
 		boolean allowInteract = json.get("allowInteract").getAsBoolean();
 		boolean allowBreak = json.get("allowBreak").getAsBoolean();
 		boolean requireEmptyHand = json.get("requireEmptyHand").getAsBoolean();
-		boolean defaultEnabled = json.get("defaultEnabled").getAsBoolean();
+		FlagPreset defaultPreset = readDefaultPreset(json);
 		boolean ownerConfigurable = json.get("ownerConfigurable").getAsBoolean();
 
-		return new ExceptionGroup(id, category, patterns, allowInteract, allowBreak, requireEmptyHand, defaultEnabled, ownerConfigurable);
+		return new ExceptionGroup(id, category, patterns, allowInteract, allowBreak, requireEmptyHand, defaultPreset, ownerConfigurable);
+	}
+
+	// Tolerant of the pre-role-based schema: if the new "defaultPreset" field (nadie/miembros/
+	// aliados/todos) is present, use it directly; otherwise translate the old "defaultEnabled"
+	// boolean this field replaced — true meant "on for everyone" (exactly the "todos" preset: every
+	// role's resolved value is true), false meant "off for everyone" ("nadie") — a lossless,
+	// behavior-preserving one-time translation, not an approximation.
+	private static FlagPreset readDefaultPreset(JsonObject json) {
+		if (json.has("defaultPreset")) {
+			String raw = json.get("defaultPreset").getAsString();
+			return FlagPreset.fromId(raw)
+					.orElseThrow(() -> new IllegalArgumentException("defaultPreset desconocido: " + raw));
+		}
+		boolean legacyDefaultEnabled = json.get("defaultEnabled").getAsBoolean();
+		return legacyDefaultEnabled ? FlagPreset.EVERYONE : FlagPreset.NOBODY;
 	}
 
 	private void writeDefault(Path configFile) {
@@ -87,16 +107,16 @@ public class ExceptionGroupRegistry {
 		List<ExceptionGroup> defaults = List.of(
 				new ExceptionGroup("doors", ExceptionGroupCategory.BLOCK,
 						List.of("#minecraft:doors", "#minecraft:trapdoors", "#minecraft:fence_gates"),
-						true, false, false, false, true),
+						true, false, false, FlagPreset.NOBODY, true),
 				new ExceptionGroup("chests", ExceptionGroupCategory.BLOCK,
 						List.of("minecraft:chest", "minecraft:trapped_chest", "minecraft:barrel", "#minecraft:shulker_boxes"),
-						true, false, false, false, true),
+						true, false, false, FlagPreset.NOBODY, true),
 				new ExceptionGroup("redstone", ExceptionGroupCategory.BLOCK,
 						List.of("#minecraft:buttons", "minecraft:lever"),
-						true, false, false, false, true),
+						true, false, false, FlagPreset.NOBODY, true),
 				new ExceptionGroup("animals", ExceptionGroupCategory.ENTITY,
 						List.of("minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:cat", "minecraft:wolf", "minecraft:parrot"),
-						true, false, false, false, true)
+						true, false, false, FlagPreset.NOBODY, true)
 		);
 
 		JsonArray array = new JsonArray();
@@ -122,7 +142,7 @@ public class ExceptionGroupRegistry {
 		json.addProperty("allowInteract", group.isAllowInteract());
 		json.addProperty("allowBreak", group.isAllowBreak());
 		json.addProperty("requireEmptyHand", group.isRequireEmptyHand());
-		json.addProperty("defaultEnabled", group.isDefaultEnabled());
+		json.addProperty("defaultPreset", group.getDefaultPreset().getId());
 		json.addProperty("ownerConfigurable", group.isOwnerConfigurable());
 
 		return json;
@@ -144,39 +164,6 @@ public class ExceptionGroupRegistry {
 
 	public List<ExceptionGroup> getAllGroups() {
 		return List.copyOf(groupsById.values());
-	}
-
-	// Used by /island admin exceptions set-default: rewrites the group's server-wide defaultEnabled
-	// and persists the whole file (every group is re-serialized, not just this one — ExceptionGroup
-	// instances don't track their own position in the JSON array).
-	public void setDefaultEnabled(String groupId, boolean value) {
-		ExceptionGroup existing = groupsById.get(groupId);
-		if (existing == null) {
-			throw new IllegalArgumentException("No existe ningún grupo de excepción con id: " + groupId);
-		}
-
-		ExceptionGroup updated = new ExceptionGroup(
-				existing.getId(), existing.getCategory(), existing.getPatterns(),
-				existing.isAllowInteract(), existing.isAllowBreak(), existing.isRequireEmptyHand(),
-				value, existing.isOwnerConfigurable());
-		groupsById.put(groupId, updated);
-
-		persist();
-	}
-
-	private void persist() {
-		JsonArray array = new JsonArray();
-		for (ExceptionGroup group : groupsById.values()) {
-			array.add(toJson(group));
-		}
-
-		Path configFile = configFile();
-		try {
-			Files.createDirectories(configFile.getParent());
-			Files.writeString(configFile, GSON.toJson(array));
-		} catch (IOException e) {
-			IslandCoreMod.LOGGER.error("Failed to persist {}", CONFIG_FILE_NAME, e);
-		}
 	}
 
 	private static Path configFile() {

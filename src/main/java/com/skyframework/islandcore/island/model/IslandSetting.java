@@ -15,7 +15,7 @@ public enum IslandSetting {
 	MOB_DAMAGE("mobdamage", false),
 
 	// true (the default) = today's behavior unchanged: AccessControllerImpl still enforces the
-	// usual role-based BUILD/BREAK check. false = anyone may build/break with no role check at
+	// usual role-based CONSTRUCCION check. false = anyone may build/break with no role check at
 	// all — see AccessControllerImpl's check() for exactly where this short-circuits. Currently
 	// only exposed for the Spawn island via /island admin spawn settings buildprotection and its
 	// network equivalent, but the setting itself is generic (per-island), like every other entry

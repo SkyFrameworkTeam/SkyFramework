@@ -9,6 +9,7 @@ import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.island.model.IslandType;
+import com.skyframework.islandcore.protection.flag.FlagPreset;
 import com.skyframework.islandcore.protection.flag.TriState;
 import com.skyframework.islandcore.storage.IslandStorage;
 
@@ -184,7 +185,7 @@ public class NbtIslandStorage implements IslandStorage {
 		// Absent on islands saved before the flag system existed: empty compounds parse to empty maps.
 		Map<String, TriState> globalFlagOverrides = globalFlagOverridesFromNbt(nbt.getCompound("globalFlagOverrides"));
 		Map<String, Map<IslandRole, TriState>> roleFlagOverrides = roleFlagOverridesFromNbt(nbt.getCompound("roleFlagOverrides"));
-		Map<String, Boolean> exceptionGroupOverrides = exceptionGroupOverridesFromNbt(nbt.getCompound("exceptionGroupOverrides"));
+		Map<String, Map<IslandRole, TriState>> roleExceptionGroupOverrides = roleExceptionGroupOverridesFromNbt(nbt.getCompound("exceptionGroupOverrides"));
 
 		// Backward-compat: before the flag system existed, /island settings firespread/pvp/mobdamage
 		// wrote directly into the "settings" compound above (keyed by the old IslandSetting enum).
@@ -198,7 +199,7 @@ public class NbtIslandStorage implements IslandStorage {
 		return new IslandData(
 				islandId, ownerUuid, dimension, gridX, gridZ, center, bounds, plotBounds,
 				islandSize, plotSize, islandType, homeLocation, state, createdAt, updatedAt, members, settings,
-				lastBiomeChangeAt, currentBiomeId, globalFlagOverrides, roleFlagOverrides, exceptionGroupOverrides
+				lastBiomeChangeAt, currentBiomeId, globalFlagOverrides, roleFlagOverrides, roleExceptionGroupOverrides
 		);
 	}
 
@@ -272,7 +273,20 @@ public class NbtIslandStorage implements IslandStorage {
 			EnumSet<IslandPermission> overrides = EnumSet.noneOf(IslandPermission.class);
 			NbtList overridesNbt = memberNbt.getList("overrides", NbtElement.STRING_TYPE);
 			for (int j = 0; j < overridesNbt.size(); j++) {
-				overrides.add(IslandPermission.valueOf(overridesNbt.getString(j)));
+				String raw = overridesNbt.getString(j);
+				try {
+					overrides.add(IslandPermission.valueOf(raw));
+				} catch (IllegalArgumentException e) {
+					// Tolerant of the pre-merge schema: "BUILD"/"BREAK" collapsed into CONSTRUCCION
+					// (see IslandPermission) — translate rather than drop. In practice no code path
+					// has ever populated this per-member override set (every IslandMember is created
+					// with EnumSet.noneOf), so this is precautionary, not a known-real case.
+					if ("BUILD".equals(raw) || "BREAK".equals(raw)) {
+						overrides.add(IslandPermission.CONSTRUCCION);
+					} else {
+						IslandCoreMod.LOGGER.error("Skipping invalid member permission override \"{}\"", raw);
+					}
+				}
 			}
 
 			members.add(new IslandMember(playerUuid, role, addedAt, overrides));
@@ -347,21 +361,63 @@ public class NbtIslandStorage implements IslandStorage {
 				overrides.put(flagId, perRole);
 			}
 		}
+		return migrateConstruccionOverride(overrides);
+	}
+
+	// Tolerant of the pre-merge schema: "construccion" replaces the separate "build"/"break" flags
+	// (see FlagRegistry.CONSTRUCCION). "build"'s override wins if the island had both; "break"'s is
+	// used only as a fallback when the island never had its own "build" override — matches the
+	// requested per-island migration rule exactly. Both old keys are removed either way so they
+	// don't linger as dead per-flag overrides for a flag id that no longer exists.
+	private static Map<String, Map<IslandRole, TriState>> migrateConstruccionOverride(Map<String, Map<IslandRole, TriState>> overrides) {
+		Map<IslandRole, TriState> buildOverride = overrides.remove("build");
+		Map<IslandRole, TriState> breakOverride = overrides.remove("break");
+		Map<IslandRole, TriState> migrated = buildOverride != null ? buildOverride : breakOverride;
+		if (migrated != null && !overrides.containsKey("construccion")) {
+			overrides.put("construccion", migrated);
+		}
 		return overrides;
 	}
 
 	private static NbtCompound exceptionGroupOverridesToNbt(IslandData island) {
 		NbtCompound nbt = new NbtCompound();
-		for (Map.Entry<String, Boolean> entry : island.getExceptionGroupOverrides().entrySet()) {
-			nbt.putBoolean(entry.getKey(), entry.getValue());
+		for (Map.Entry<String, Map<IslandRole, TriState>> entry : island.getRoleExceptionGroupOverrides().entrySet()) {
+			NbtCompound perRoleNbt = new NbtCompound();
+			for (Map.Entry<IslandRole, TriState> roleEntry : entry.getValue().entrySet()) {
+				perRoleNbt.putString(roleEntry.getKey().name(), roleEntry.getValue().name());
+			}
+			nbt.put(entry.getKey(), perRoleNbt);
 		}
 		return nbt;
 	}
 
-	private static Map<String, Boolean> exceptionGroupOverridesFromNbt(NbtCompound nbt) {
-		Map<String, Boolean> overrides = new HashMap<>();
+	// Tolerant of the pre-role-based schema: a group stored as a plain boolean (NbtElement.BYTE_TYPE,
+	// from before exception groups resolved per role) is translated into a uniform per-role
+	// override — true meant "on for everyone" (every role ALLOW, matching FlagPreset.EVERYONE),
+	// false meant "off for everyone" (FlagPreset.NOBODY) — the same lossless translation
+	// ExceptionGroupRegistry applies to the config file's old defaultEnabled field. A group already
+	// in the new nested-compound shape (NbtElement.COMPOUND_TYPE) is read exactly like
+	// roleFlagOverridesFromNbt above.
+	private static Map<String, Map<IslandRole, TriState>> roleExceptionGroupOverridesFromNbt(NbtCompound nbt) {
+		Map<String, Map<IslandRole, TriState>> overrides = new HashMap<>();
 		for (String groupId : nbt.getKeys()) {
-			overrides.put(groupId, nbt.getBoolean(groupId));
+			if (nbt.contains(groupId, NbtElement.COMPOUND_TYPE)) {
+				NbtCompound perRoleNbt = nbt.getCompound(groupId);
+				Map<IslandRole, TriState> perRole = new EnumMap<>(IslandRole.class);
+				for (String roleName : perRoleNbt.getKeys()) {
+					try {
+						perRole.put(IslandRole.valueOf(roleName), TriState.valueOf(perRoleNbt.getString(roleName)));
+					} catch (IllegalArgumentException e) {
+						IslandCoreMod.LOGGER.error("Skipping invalid role exception group override \"{}\"/\"{}\"", groupId, roleName, e);
+					}
+				}
+				if (!perRole.isEmpty()) {
+					overrides.put(groupId, perRole);
+				}
+			} else if (nbt.contains(groupId, NbtElement.BYTE_TYPE)) {
+				boolean legacyEnabled = nbt.getBoolean(groupId);
+				overrides.put(groupId, (legacyEnabled ? FlagPreset.EVERYONE : FlagPreset.NOBODY).toRoleValues());
+			}
 		}
 		return overrides;
 	}

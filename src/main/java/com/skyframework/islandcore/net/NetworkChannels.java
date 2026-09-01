@@ -23,7 +23,7 @@ public final class NetworkChannels {
 	// (that would require decoding the payload before knowing whether it's safe to decode it) — a
 	// change to the handshake payloads themselves still requires shipping server and client
 	// together, the same as every codec change in this project always has.
-	public static final int PROTOCOL_VERSION = 1;
+	public static final int PROTOCOL_VERSION = 3;
 
 	public static final Identifier HANDSHAKE_C2S = Identifier.of("islandcore", "handshake_c2s");
 	public static final Identifier HANDSHAKE_S2C = Identifier.of("islandcore", "handshake_s2c");
@@ -106,9 +106,21 @@ public final class NetworkChannels {
 	public static final Identifier FLAGS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "flags_status_request_c2s");
 	public static final Identifier FLAGS_STATUS_S2C = Identifier.of("islandcore", "flags_status_s2c");
 	public static final Identifier FLAG_SET_C2S = Identifier.of("islandcore", "flag_set_c2s");
+	public static final Identifier FLAG_SET_PRESET_C2S = Identifier.of("islandcore", "flag_set_preset_c2s");
 	public static final Identifier EXCEPTION_GROUPS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "exception_groups_status_request_c2s");
 	public static final Identifier EXCEPTION_GROUPS_STATUS_S2C = Identifier.of("islandcore", "exception_groups_status_s2c");
-	public static final Identifier EXCEPTION_GROUP_SET_C2S = Identifier.of("islandcore", "exception_group_set_c2s");
+	// Replaces the old boolean-shaped exception_group_set_c2s (Sprint "excepciones por rol") —
+	// exception groups now resolve per role via a 4-way preset, exact mirror of FLAG_SET_PRESET_C2S.
+	public static final Identifier EXCEPTION_GROUP_SET_PRESET_C2S = Identifier.of("islandcore", "exception_group_set_preset_c2s");
+
+	// Admin-only: server-wide default configuration (not any specific island) for ROLE_BASED flags
+	// and exception groups — the "servidor" layer in FlagResolver/ExceptionResolver's resolution
+	// chain. Requires operator (see ServerPacketHandlers#rejectIfNotOperator), same as every other
+	// admin network payload.
+	public static final Identifier ADMIN_DEFAULTS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "admin_defaults_status_request_c2s");
+	public static final Identifier ADMIN_DEFAULTS_STATUS_S2C = Identifier.of("islandcore", "admin_defaults_status_s2c");
+	public static final Identifier ADMIN_FLAG_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_flag_set_server_default_c2s");
+	public static final Identifier ADMIN_EXCEPTION_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_exception_set_server_default_c2s");
 
 	// Party network block: mirrors "/party" — see PartyStatusBuilder.
 

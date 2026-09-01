@@ -21,8 +21,10 @@ import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.protection.exception.ExceptionGroup;
 import com.skyframework.islandcore.protection.exception.ExceptionGroupCategory;
+import com.skyframework.islandcore.protection.exception.ExceptionResolver;
 import com.skyframework.islandcore.protection.flag.Flag;
 import com.skyframework.islandcore.protection.flag.FlagCategory;
+import com.skyframework.islandcore.protection.flag.FlagPreset;
 import com.skyframework.islandcore.protection.flag.FlagRegistry;
 import com.skyframework.islandcore.protection.flag.FlagResolver;
 import com.skyframework.islandcore.protection.flag.TriState;
@@ -63,6 +65,13 @@ public class IslandCommand {
 
 	private static final List<String> SETTING_NAMES = List.of("firespread", "pvp", "mobdamage");
 	private static final List<String> TRISTATE_NAMES = List.of("allow", "deny", "default");
+	private static final List<String> FLAG_PRESET_NAMES = List.of("nadie", "miembros", "aliados", "todos");
+	// "/island admin flags set-default" accepts either vocabulary depending on the flag's category
+	// (ISLAND_GLOBAL -> allow/deny, ROLE_BASED -> preset) — see executeAdminFlagsSetDefault. Both are
+	// offered as suggestions since Brigadier has no way to filter them by the "flag" argument typed
+	// just before this one.
+	private static final List<String> FLAG_SET_DEFAULT_VALUE_NAMES =
+			List.of("allow", "deny", "nadie", "miembros", "aliados", "todos");
 
 	private IslandCommand() {
 	}
@@ -125,15 +134,22 @@ public class IslandCommand {
 												.suggests(IslandCommand::suggestFlagIds)
 												.then(CommandManager.argument("value", StringArgumentType.word())
 														.suggests((ctx, builder) -> CommandSource.suggestMatching(TRISTATE_NAMES, builder))
-														.executes(IslandCommand::executeFlagsSet)))))
+														.executes(IslandCommand::executeFlagsSet))))
+								.then(CommandManager.literal("preset")
+										.then(CommandManager.argument("flag", StringArgumentType.word())
+												.suggests(IslandCommand::suggestRoleBasedFlagIds)
+												.then(CommandManager.argument("preset", StringArgumentType.word())
+														.suggests((ctx, builder) -> CommandSource.suggestMatching(FLAG_PRESET_NAMES, builder))
+														.executes(IslandCommand::executeFlagsPreset)))))
 						.then(CommandManager.literal("exceptions")
 								.then(CommandManager.literal("list")
 										.executes(IslandCommand::executeExceptionsList))
-								.then(CommandManager.literal("set")
+								.then(CommandManager.literal("preset")
 										.then(CommandManager.argument("group", StringArgumentType.word())
 												.suggests(IslandCommand::suggestExceptionGroupIds)
-												.then(CommandManager.argument("value", BoolArgumentType.bool())
-														.executes(IslandCommand::executeExceptionsSet)))))
+												.then(CommandManager.argument("preset", StringArgumentType.word())
+														.suggests((ctx, builder) -> CommandSource.suggestMatching(FLAG_PRESET_NAMES, builder))
+														.executes(IslandCommand::executeExceptionsPreset)))))
 						.then(CommandManager.literal("admin")
 								.requires(source -> source.hasPermissionLevel(2))
 								.then(CommandManager.literal("spawn")
@@ -156,23 +172,25 @@ public class IslandCommand {
 												.then(CommandManager.argument("player", EntityArgumentType.player())
 														.executes(IslandCommand::executeAdminSpawnUntrust)))
 										.then(CommandManager.literal("exceptions")
-												.then(CommandManager.literal("set")
+												.then(CommandManager.literal("preset")
 														.then(CommandManager.argument("group", StringArgumentType.word())
 																.suggests(IslandCommand::suggestExceptionGroupIds)
-																.then(CommandManager.argument("value", BoolArgumentType.bool())
-																		.executes(IslandCommand::executeAdminSpawnExceptionsSet))))))
+																.then(CommandManager.argument("preset", StringArgumentType.word())
+																		.suggests((ctx, builder) -> CommandSource.suggestMatching(FLAG_PRESET_NAMES, builder))
+																		.executes(IslandCommand::executeAdminSpawnExceptionsPreset))))))
 								.then(CommandManager.literal("flags")
 										.then(CommandManager.literal("set-default")
 												.then(CommandManager.argument("flag", StringArgumentType.word())
 														.suggests(IslandCommand::suggestFlagIds)
 														.then(CommandManager.argument("value", StringArgumentType.word())
-																.suggests((ctx, builder) -> CommandSource.suggestMatching(List.of("allow", "deny"), builder))
+																.suggests((ctx, builder) -> CommandSource.suggestMatching(FLAG_SET_DEFAULT_VALUE_NAMES, builder))
 																.executes(IslandCommand::executeAdminFlagsSetDefault)))))
 								.then(CommandManager.literal("exceptions")
 										.then(CommandManager.literal("set-default")
 												.then(CommandManager.argument("group", StringArgumentType.word())
 														.suggests(IslandCommand::suggestExceptionGroupIds)
-														.then(CommandManager.argument("value", BoolArgumentType.bool())
+														.then(CommandManager.argument("preset", StringArgumentType.word())
+																.suggests((ctx, builder) -> CommandSource.suggestMatching(FLAG_PRESET_NAMES, builder))
 																.executes(IslandCommand::executeAdminExceptionsSetDefault)))))
 								.then(CommandManager.literal("list")
 										.executes(IslandCommand::executeAdminListAll)
@@ -400,8 +418,7 @@ public class IslandCommand {
 	// (used by /island flags set and stored on disk) are unchanged.
 	private static String flagDisplayName(Flag flag) {
 		return switch (flag.getId()) {
-			case "build" -> "Construcción";
-			case "break" -> "Romper bloques";
+			case "construccion" -> "Construcción";
 			case "interact" -> "Interactuar";
 			case "containers" -> "Contenedores";
 			case "entities" -> "Entidades";
@@ -448,32 +465,75 @@ public class IslandCommand {
 		return 1;
 	}
 
+	private static int executeFlagsPreset(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		String flagId = StringArgumentType.getString(ctx, "flag");
+		String preset = StringArgumentType.getString(ctx, "preset");
+
+		ActionOutcome<Void> outcome = IslandActionService.applyFlagPreset(player.getUuid(), flagId, preset);
+		if (!outcome.success()) {
+			if (ActionReason.NO_ISLAND.equals(outcome.reason())) {
+				source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			} else if (ActionReason.INVALID_FLAG_PRESET.equals(outcome.reason())) {
+				source.sendError(Text.literal(
+						"Flag o preset inválido. Usa un flag por rol (no fire_spread/pvp_damage/mob_damage) y uno de: "
+								+ String.join(", ", FLAG_PRESET_NAMES) + "."));
+			} else {
+				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus flags."));
+			}
+			return 0;
+		}
+
+		source.sendFeedback(() -> Text.literal(flagId + " = preset " + preset), false);
+
+		return 1;
+	}
+
+	// Dispatches by the flag's own category: ISLAND_GLOBAL flags (fire_spread/pvp_damage/mob_damage)
+	// keep the plain allow/deny value they always had (a preset is meaningless for a flag with no
+	// per-role distinction); ROLE_BASED flags now require one of the 4 preset names instead — a flat
+	// single value can't express "different per role" the way a preset can.
 	private static int executeAdminFlagsSetDefault(CommandContext<ServerCommandSource> ctx) {
 		ServerCommandSource source = ctx.getSource();
 		String flagId = StringArgumentType.getString(ctx, "flag");
 		String valueArg = StringArgumentType.getString(ctx, "value");
 
-		if (FlagRegistry.get(flagId).isEmpty()) {
+		Optional<Flag> maybeFlag = FlagRegistry.get(flagId);
+		if (maybeFlag.isEmpty()) {
 			source.sendError(Text.literal("Flag desconocido: " + flagId));
 			return 0;
 		}
+		Flag flag = maybeFlag.get();
 
-		TriState value;
-		try {
-			value = TriState.valueOf(valueArg.toUpperCase(Locale.ROOT));
-			if (value == TriState.DEFAULT) {
-				throw new IllegalArgumentException("default no es válido aquí");
+		if (flag.getCategory() == FlagCategory.ISLAND_GLOBAL) {
+			TriState value;
+			try {
+				value = TriState.valueOf(valueArg.toUpperCase(Locale.ROOT));
+				if (value == TriState.DEFAULT) {
+					throw new IllegalArgumentException("default no es válido aquí");
+				}
+			} catch (IllegalArgumentException e) {
+				source.sendError(Text.literal("Valor inválido: " + valueArg + ". Usa allow o deny (este flag no admite preset)."));
+				return 0;
 			}
-		} catch (IllegalArgumentException e) {
-			source.sendError(Text.literal("Valor inválido: " + valueArg + ". Usa allow o deny."));
+
+			IslandCoreMod.SERVER_FLAG_DEFAULTS.setGlobalDefault(flagId, value);
+			source.sendFeedback(() -> Text.literal(
+					"Valor por defecto del servidor para " + flagId + " = " + valueArg.toLowerCase(Locale.ROOT)), false);
+			return 1;
+		}
+
+		Optional<FlagPreset> preset = FlagPreset.fromId(valueArg.toLowerCase(Locale.ROOT));
+		if (preset.isEmpty()) {
+			source.sendError(Text.literal("Valor inválido: " + valueArg + ". Usa uno de: "
+					+ String.join(", ", FLAG_PRESET_NAMES) + " (este flag es por rol, no admite allow/deny)."));
 			return 0;
 		}
 
-		IslandCoreMod.SERVER_FLAG_DEFAULTS.setDefault(flagId, value);
-
+		IslandCoreMod.SERVER_FLAG_DEFAULTS.setRoleBasedDefault(flagId, preset.get());
 		source.sendFeedback(() -> Text.literal(
-				"Valor por defecto del servidor para " + flagId + " = " + valueArg.toLowerCase(Locale.ROOT)), false);
-
+				"Valor por defecto del servidor para " + flagId + " = preset " + preset.get().getId()), false);
 		return 1;
 	}
 
@@ -504,7 +564,9 @@ public class IslandCommand {
 
 	// Same titled-section look as executeFlagsList (see IslandMessages#sectionTitle), split by
 	// ExceptionGroupCategory (BLOCK/ENTITY) instead of by role since exception groups have no role
-	// axis. A section with no groups is skipped entirely rather than printed empty.
+	// axis of their own — but now resolve per role too (see ExceptionResolver), so each group shows
+	// its current preset plus the same 6-role breakdown executeFlagsList already prints for a
+	// ROLE_BASED flag. A section with no groups is skipped entirely rather than printed empty.
 	private static void sendExceptionGroupSection(
 			ServerCommandSource source, Island island, List<ExceptionGroup> groups, ExceptionGroupCategory category, String title) {
 		List<ExceptionGroup> inCategory = groups.stream().filter(group -> group.getCategory() == category).toList();
@@ -513,30 +575,43 @@ public class IslandCommand {
 		}
 
 		IslandMessages.sectionTitle(source, title, Formatting.GOLD);
+		IslandRole[] roles = IslandRole.values();
 		for (ExceptionGroup group : inCategory) {
-			Boolean override = island.getExceptionGroupOverride(group.getId());
-			boolean effective = override != null ? override : group.isDefaultEnabled();
 			String configurableSuffix = group.isOwnerConfigurable() ? "" : " (solo gestionable por un admin)";
+			String currentPreset = ExceptionResolver.currentPreset(island, group);
 
-			MutableText line = Text.literal(group.getId()).formatted(Formatting.WHITE)
-					.append(Text.literal(": ").formatted(Formatting.GRAY))
-					.append(exceptionStateText(effective))
+			MutableText header = Text.literal(group.getId()).formatted(Formatting.WHITE)
+					.append(Text.literal(": preset " + currentPreset).formatted(Formatting.GRAY))
 					.append(Text.literal(configurableSuffix).formatted(Formatting.GRAY));
-			source.sendFeedback(() -> line, false);
+			source.sendFeedback(() -> header, false);
+
+			for (int i = 0; i < roles.length; i += 3) {
+				int lineEnd = Math.min(i + 3, roles.length);
+				MutableText line = Text.literal("  ");
+				for (int j = i; j < lineEnd; j++) {
+					IslandRole role = roles[j];
+					boolean enabled = ExceptionResolver.isEnabledForRole(island, role, group);
+					line.append(exceptionRoleValueText(role, enabled));
+					if (j < lineEnd - 1) {
+						line.append(Text.literal("   "));
+					}
+				}
+				source.sendFeedback(() -> line, false);
+			}
 		}
 	}
 
-	private static Text exceptionStateText(boolean effective) {
-		return effective
-				? Text.literal("activo").formatted(Formatting.GREEN)
-				: Text.literal("inactivo").formatted(Formatting.RED);
+	private static Text exceptionRoleValueText(IslandRole role, boolean enabled) {
+		Formatting valueColor = enabled ? Formatting.GREEN : Formatting.RED;
+		return Text.literal(role.name() + ": ").formatted(Formatting.GRAY)
+				.append(Text.literal(enabled ? "ON" : "OFF").formatted(valueColor));
 	}
 
-	private static int executeExceptionsSet(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+	private static int executeExceptionsPreset(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
 		ServerCommandSource source = ctx.getSource();
 		ServerPlayerEntity player = source.getPlayerOrThrow();
 		String groupId = StringArgumentType.getString(ctx, "group");
-		boolean value = BoolArgumentType.getBool(ctx, "value");
+		String preset = StringArgumentType.getString(ctx, "preset");
 
 		Optional<ExceptionGroup> maybeGroup = IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(groupId);
 		if (maybeGroup.isEmpty()) {
@@ -549,17 +624,19 @@ public class IslandCommand {
 			return 0;
 		}
 
-		ActionOutcome<Void> outcome = IslandActionService.updateExceptionGroup(player.getUuid(), groupId, value);
+		ActionOutcome<Void> outcome = IslandActionService.applyExceptionGroupPreset(player.getUuid(), groupId, preset);
 		if (!outcome.success()) {
 			if (ActionReason.NO_ISLAND.equals(outcome.reason())) {
 				source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			} else if (ActionReason.INVALID_EXCEPTION_PRESET.equals(outcome.reason())) {
+				source.sendError(Text.literal("Preset inválido. Usa uno de: " + String.join(", ", FLAG_PRESET_NAMES) + "."));
 			} else {
 				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus grupos de excepción."));
 			}
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal(groupId + " = " + value), false);
+		source.sendFeedback(() -> Text.literal(groupId + " = preset " + preset), false);
 
 		return 1;
 	}
@@ -567,24 +644,31 @@ public class IslandCommand {
 	private static int executeAdminExceptionsSetDefault(CommandContext<ServerCommandSource> ctx) {
 		ServerCommandSource source = ctx.getSource();
 		String groupId = StringArgumentType.getString(ctx, "group");
-		boolean value = BoolArgumentType.getBool(ctx, "value");
+		String presetArg = StringArgumentType.getString(ctx, "preset");
 
-		try {
-			IslandCoreMod.EXCEPTION_GROUP_REGISTRY.setDefaultEnabled(groupId, value);
-		} catch (IllegalArgumentException e) {
-			source.sendError(Text.literal(e.getMessage()));
+		if (IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(groupId).isEmpty()) {
+			source.sendError(Text.literal("Grupo de excepción desconocido: " + groupId));
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("Valor por defecto del servidor para el grupo " + groupId + " = " + value), false);
+		Optional<FlagPreset> preset = FlagPreset.fromId(presetArg.toLowerCase(Locale.ROOT));
+		if (preset.isEmpty()) {
+			source.sendError(Text.literal("Preset inválido: " + presetArg + ". Usa uno de: " + String.join(", ", FLAG_PRESET_NAMES) + "."));
+			return 0;
+		}
+
+		IslandCoreMod.SERVER_EXCEPTION_DEFAULTS.setDefault(groupId, preset.get());
+
+		source.sendFeedback(() -> Text.literal(
+				"Valor por defecto del servidor para el grupo " + groupId + " = preset " + preset.get().getId()), false);
 
 		return 1;
 	}
 
-	private static int executeAdminSpawnExceptionsSet(CommandContext<ServerCommandSource> ctx) {
+	private static int executeAdminSpawnExceptionsPreset(CommandContext<ServerCommandSource> ctx) {
 		ServerCommandSource source = ctx.getSource();
 		String groupId = StringArgumentType.getString(ctx, "group");
-		boolean value = BoolArgumentType.getBool(ctx, "value");
+		String presetArg = StringArgumentType.getString(ctx, "preset");
 
 		if (IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(groupId).isEmpty()) {
 			source.sendError(Text.literal("Grupo de excepción desconocido: " + groupId));
@@ -597,11 +681,24 @@ public class IslandCommand {
 			return 0;
 		}
 
-		IslandCoreMod.ISLAND_REGISTRY.updateExceptionGroupOverride(maybeIsland.get().getIslandId(), groupId, value);
+		try {
+			IslandCoreMod.ISLAND_REGISTRY.applyExceptionGroupPreset(maybeIsland.get().getIslandId(), groupId, presetArg.toLowerCase(Locale.ROOT));
+		} catch (IllegalArgumentException e) {
+			source.sendError(Text.literal("Preset inválido: " + presetArg + ". Usa uno de: " + String.join(", ", FLAG_PRESET_NAMES) + "."));
+			return 0;
+		}
 
-		source.sendFeedback(() -> Text.literal(groupId + " = " + value + " en la isla de Spawn."), false);
+		source.sendFeedback(() -> Text.literal(groupId + " = preset " + presetArg.toLowerCase(Locale.ROOT) + " en la isla de Spawn."), false);
 
 		return 1;
+	}
+
+	private static CompletableFuture<Suggestions> suggestRoleBasedFlagIds(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
+		List<String> ids = FlagRegistry.all().stream()
+				.filter(flag -> flag.getCategory() == FlagCategory.ROLE_BASED)
+				.map(Flag::getId)
+				.toList();
+		return CommandSource.suggestMatching(ids, builder);
 	}
 
 	private static CompletableFuture<Suggestions> suggestFlagIds(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {

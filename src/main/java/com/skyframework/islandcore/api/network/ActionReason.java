@@ -184,13 +184,22 @@ public final class ActionReason {
 	// FlagSetC2S when the value string isn't one of allow/deny/default (TriState#valueOf).
 	public static final String INVALID_FLAG_VALUE = "invalid_flag_value";
 
+	// FlagSetPresetC2S / IslandRegistryApi#applyFlagPreset's IllegalArgumentException: flagId isn't
+	// a ROLE_BASED flag, or preset isn't one of nadie/miembros/aliados/todos (FlagPreset#fromId).
+	public static final String INVALID_FLAG_PRESET = "invalid_flag_preset";
+
 	// ExceptionGroupsStatusRequestC2S/ExceptionGroupSetC2S when the groupId doesn't match any
 	// registered ExceptionGroup (ExceptionGroupRegistry#getGroup).
 	public static final String EXCEPTION_GROUP_NOT_FOUND = "exception_group_not_found";
 
-	// ExceptionGroupSetC2S when the group exists but ExceptionGroup#isOwnerConfigurable() is false
-	// (only an admin may change it — mirrors executeExceptionsSet's own check).
+	// ExceptionGroupSetPresetC2S when the group exists but ExceptionGroup#isOwnerConfigurable() is
+	// false (only an admin may change it — mirrors executeExceptionsPreset's own check).
 	public static final String EXCEPTION_GROUP_NOT_OWNER_CONFIGURABLE = "exception_group_not_owner_configurable";
+
+	// ExceptionGroupSetPresetC2S / IslandRegistryApi#applyExceptionGroupPreset's
+	// IllegalArgumentException: groupId isn't a registered ExceptionGroup, or preset isn't one of
+	// nadie/miembros/aliados/todos (FlagPreset#fromId) — exact mirror of INVALID_FLAG_PRESET above.
+	public static final String INVALID_EXCEPTION_PRESET = "invalid_exception_preset";
 
 	// Party network block.
 

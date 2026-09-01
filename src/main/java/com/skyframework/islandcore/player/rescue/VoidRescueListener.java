@@ -3,6 +3,7 @@ package com.skyframework.islandcore.player.rescue;
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.teleport.SafeLandingChecker;
+import com.skyframework.islandcore.teleport.SafeLocationFinder;
 import com.skyframework.islandcore.teleport.TeleportBackend;
 import com.skyframework.islandcore.teleport.VanillaTeleportBackend;
 
@@ -61,12 +62,20 @@ public final class VoidRescueListener {
 			return true;
 		}
 
-		// homeLocation may have been set (before this fix existed) while standing over a block
-		// that no longer has solid support underneath: don't hand the player a second fall right
-		// after rescuing them from the first one.
+		// homeLocation may have had a block broken out from under it since it was set: don't hand
+		// the player a second fall right after rescuing them from the first one. Searches for the
+		// nearest safe spot instead of blindly trusting the island's center — home defaults to
+		// center on creation (see TeleportManagerImpl#requestHome), so if the player broke ground
+		// right there, center is unsafe too, and falling back to it unchecked used to rescue them
+		// into the exact same hole, looping forever. Persisted via updateHomeLocation (this listener
+		// never did before) so this self-corrects once instead of re-triggering on every future fall.
 		BlockPos destination = island.getHomeLocation();
-		if (!SafeLandingChecker.isSafe(world, destination)) {
-			destination = island.getCenter();
+		if (destination == null || !SafeLandingChecker.isSafe(world, destination)) {
+			BlockPos searchOrigin = destination != null ? destination : island.getCenter();
+			BlockPos safe = SafeLocationFinder.findNearestSafe(world, searchOrigin, SafeLocationFinder.DEFAULT_SEARCH_RADIUS, island.getBounds())
+					.orElseGet(island::getCenter);
+			IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(island.getIslandId(), safe);
+			destination = safe;
 		}
 
 		// player.teleport(...) (ServerPlayerEntity#teleport -> requestTeleport, confirmed via

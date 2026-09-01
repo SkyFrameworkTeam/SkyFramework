@@ -51,10 +51,16 @@ import com.skyframework.islandcore.net.admin.vanilla.VanillaResetQueueC2S;
 import com.skyframework.islandcore.net.biome.BiomeTiersBuilder;
 import com.skyframework.islandcore.net.biome.BiomeTiersRequestC2S;
 import com.skyframework.islandcore.net.biome.BiomeTiersS2C;
-import com.skyframework.islandcore.net.flag.ExceptionGroupSetC2S;
+import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsBuilder;
+import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsStatusRequestC2S;
+import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsStatusS2C;
+import com.skyframework.islandcore.net.admin.defaults.AdminExceptionSetServerDefaultC2S;
+import com.skyframework.islandcore.net.admin.defaults.AdminFlagSetServerDefaultC2S;
+import com.skyframework.islandcore.net.flag.ExceptionGroupSetPresetC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusRequestC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusS2C;
 import com.skyframework.islandcore.net.flag.FlagSetC2S;
+import com.skyframework.islandcore.net.flag.FlagSetPresetC2S;
 import com.skyframework.islandcore.net.flag.FlagsStatusBuilder;
 import com.skyframework.islandcore.net.flag.FlagsStatusRequestC2S;
 import com.skyframework.islandcore.net.flag.FlagsStatusS2C;
@@ -94,6 +100,8 @@ import com.skyframework.islandcore.net.teleport.TeleportStatusRequestC2S;
 import com.skyframework.islandcore.net.teleport.TeleportStatusS2C;
 import com.skyframework.islandcore.protection.exception.ExceptionGroup;
 import com.skyframework.islandcore.protection.flag.Flag;
+import com.skyframework.islandcore.protection.flag.FlagCategory;
+import com.skyframework.islandcore.protection.flag.FlagPreset;
 import com.skyframework.islandcore.protection.flag.FlagRegistry;
 import com.skyframework.islandcore.protection.flag.TriState;
 
@@ -162,6 +170,7 @@ public final class ServerPacketHandlers {
 		registerSpawnAdminHandlers();
 		registerDimensionAdminHandlers();
 		registerVanillaResetAdminHandlers();
+		registerAdminDefaultsHandlers();
 	}
 
 	// Every C2S receiver except the handshake itself (see the comment above that registration)
@@ -216,9 +225,15 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playC2S().register(FlagsStatusRequestC2S.ID, FlagsStatusRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(FlagsStatusS2C.ID, FlagsStatusS2C.CODEC);
 		PayloadTypeRegistry.playC2S().register(FlagSetC2S.ID, FlagSetC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(FlagSetPresetC2S.ID, FlagSetPresetC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(ExceptionGroupsStatusRequestC2S.ID, ExceptionGroupsStatusRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(ExceptionGroupsStatusS2C.ID, ExceptionGroupsStatusS2C.CODEC);
-		PayloadTypeRegistry.playC2S().register(ExceptionGroupSetC2S.ID, ExceptionGroupSetC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(ExceptionGroupSetPresetC2S.ID, ExceptionGroupSetPresetC2S.CODEC);
+
+		PayloadTypeRegistry.playC2S().register(AdminDefaultsStatusRequestC2S.ID, AdminDefaultsStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(AdminDefaultsStatusS2C.ID, AdminDefaultsStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(AdminFlagSetServerDefaultC2S.ID, AdminFlagSetServerDefaultC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(AdminExceptionSetServerDefaultC2S.ID, AdminExceptionSetServerDefaultC2S.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(PartyStatusRequestC2S.ID, PartyStatusRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(PartyStatusS2C.ID, PartyStatusS2C.CODEC);
@@ -442,6 +457,14 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
+		registerGuarded(FlagSetPresetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			// Same entry point "/island flags preset" calls — IslandActionService#applyFlagPreset
+			// validates flagId/preset itself (via IslandRegistryApi#applyFlagPreset).
+			ActionOutcome<Void> outcome = IslandActionService.applyFlagPreset(player.getUuid(), payload.flagId(), payload.preset());
+			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
+
 		registerGuarded(ExceptionGroupsStatusRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 
@@ -454,7 +477,7 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, FlagsStatusBuilder.buildExceptionGroupsStatus(maybeIsland.get()));
 		});
 
-		registerGuarded(ExceptionGroupSetC2S.ID, (payload, context) -> {
+		registerGuarded(ExceptionGroupSetPresetC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 
 			Optional<ExceptionGroup> maybeGroup = IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(payload.groupId());
@@ -467,9 +490,65 @@ public final class ServerPacketHandlers {
 				return;
 			}
 
-			// Same entry point "/island exceptions set" calls.
-			ActionOutcome<Void> outcome = IslandActionService.updateExceptionGroup(player.getUuid(), payload.groupId(), payload.enabled());
+			// Same entry point "/island exceptions preset" calls.
+			ActionOutcome<Void> outcome = IslandActionService.applyExceptionGroupPreset(player.getUuid(), payload.groupId(), payload.preset());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
+	}
+
+	// Admin-only: server-wide default configuration for ROLE_BASED flags and exception groups — see
+	// AdminDefaultsStatusS2C's class javadoc for why ISLAND_GLOBAL flags aren't reachable here.
+	private static void registerAdminDefaultsHandlers() {
+		registerGuarded(AdminDefaultsStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			ServerPlayNetworking.send(player, AdminDefaultsBuilder.build());
+		});
+
+		registerGuarded(AdminFlagSetServerDefaultC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Flag> maybeFlag = FlagRegistry.get(payload.flagId());
+			if (maybeFlag.isEmpty() || maybeFlag.get().getCategory() != FlagCategory.ROLE_BASED) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_PRESET));
+				return;
+			}
+
+			Optional<FlagPreset> preset = FlagPreset.fromId(payload.preset());
+			if (preset.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_PRESET));
+				return;
+			}
+
+			IslandCoreMod.SERVER_FLAG_DEFAULTS.setRoleBasedDefault(payload.flagId(), preset.get());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(AdminExceptionSetServerDefaultC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			if (IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(payload.groupId()).isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_EXCEPTION_PRESET));
+				return;
+			}
+
+			Optional<FlagPreset> preset = FlagPreset.fromId(payload.preset());
+			if (preset.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_EXCEPTION_PRESET));
+				return;
+			}
+
+			IslandCoreMod.SERVER_EXCEPTION_DEFAULTS.setDefault(payload.groupId(), preset.get());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 	}
 

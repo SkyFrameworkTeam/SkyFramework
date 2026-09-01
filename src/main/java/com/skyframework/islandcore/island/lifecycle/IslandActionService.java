@@ -167,7 +167,14 @@ public final class IslandActionService {
 		return ActionOutcome.ok();
 	}
 
-	public static ActionOutcome<Void> updateExceptionGroup(UUID playerUuid, String groupId, boolean value) {
+	// Shared by both "/island flags preset" and FlagSetPresetC2S. flagId/preset are passed through
+	// as raw strings, not pre-resolved — IslandRegistryApi#applyFlagPreset itself validates flagId
+	// resolves to a ROLE_BASED flag and preset is one of FlagPreset's 4 names, throwing
+	// IllegalArgumentException otherwise, caught here and reported as one reason (INVALID_FLAG_PRESET)
+	// regardless of which of the two validations actually failed — same "one catch-all reason"
+	// simplification INVALID_STYLE/INVALID_DIMENSION_ID already use for their own single-cause
+	// validation failures.
+	public static ActionOutcome<Void> applyFlagPreset(UUID playerUuid, String flagId, String preset) {
 		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
 		if (maybeIsland.isEmpty()) {
 			return ActionOutcome.fail(ActionReason.NO_ISLAND);
@@ -178,7 +185,35 @@ public final class IslandActionService {
 			return ActionOutcome.fail(ActionReason.NOT_OWNER);
 		}
 
-		IslandCoreMod.ISLAND_REGISTRY.updateExceptionGroupOverride(island.getIslandId(), groupId, value);
+		try {
+			IslandCoreMod.ISLAND_REGISTRY.applyFlagPreset(island.getIslandId(), flagId, preset);
+		} catch (IllegalArgumentException e) {
+			return ActionOutcome.fail(ActionReason.INVALID_FLAG_PRESET);
+		}
+		return ActionOutcome.ok();
+	}
+
+	// Shared by both "/island exceptions preset" and ExceptionGroupSetPresetC2S. groupId/preset are
+	// passed through as raw strings, not pre-resolved — IslandRegistryApi#applyExceptionGroupPreset
+	// itself validates groupId resolves to a registered ExceptionGroup and preset is one of
+	// FlagPreset's 4 names, throwing IllegalArgumentException otherwise, caught here and reported as
+	// one reason (INVALID_EXCEPTION_PRESET) — exact mirror of applyFlagPreset above.
+	public static ActionOutcome<Void> applyExceptionGroupPreset(UUID playerUuid, String groupId, String preset) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		Island island = maybeIsland.get();
+		if (!island.getOwnerUuid().equals(playerUuid)) {
+			return ActionOutcome.fail(ActionReason.NOT_OWNER);
+		}
+
+		try {
+			IslandCoreMod.ISLAND_REGISTRY.applyExceptionGroupPreset(island.getIslandId(), groupId, preset);
+		} catch (IllegalArgumentException e) {
+			return ActionOutcome.fail(ActionReason.INVALID_EXCEPTION_PRESET);
+		}
 		return ActionOutcome.ok();
 	}
 

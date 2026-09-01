@@ -15,6 +15,10 @@ import java.util.List;
  * {@code ActionResultS2C.fail(ActionReason.NO_ISLAND)} instead, no empty/placeholder snapshot.
  * Wire field order: {@code groups} (list of {@link GroupEntry}, in
  * {@code ExceptionGroupRegistry.getAllGroups()}'s registration order).
+ *
+ * <p>Exception groups now resolve per role exactly like ROLE_BASED flags (see ExceptionResolver) —
+ * this record mirrors {@link FlagsStatusS2C.FlagEntry}'s shape instead of the old single
+ * {@code enabled} boolean.
  */
 public record ExceptionGroupsStatusS2C(List<GroupEntry> groups) implements CustomPayload {
 
@@ -34,15 +38,23 @@ public record ExceptionGroupsStatusS2C(List<GroupEntry> groups) implements Custo
 		return ID;
 	}
 
-	// Wire field order: groupId, category ("BLOCK" or "ENTITY",
-	// ExceptionGroupCategory#name()), enabled (resolved: island override if set, else
-	// ExceptionGroup#isDefaultEnabled() — exactly what "/island exceptions list" computes),
-	// ownerConfigurable (ExceptionGroup#isOwnerConfigurable()).
-	public record GroupEntry(String groupId, String category, boolean enabled, boolean ownerConfigurable) {
+	// Wire field order: groupId, category ("BLOCK" or "ENTITY", ExceptionGroupCategory#name()),
+	// resolvedByRole (one FlagsStatusS2C.RoleValueEntry per IslandRole, reusing that record exactly
+	// — same shape, no reason to duplicate it), currentPreset ("nadie"/"miembros"/"aliados"/"todos"
+	// if the current VISITOR/ALLY/MEMBER/TRUSTED combination exactly matches one of those presets,
+	// or "custom" if not — see ExceptionResolver#currentPreset), ownerConfigurable
+	// (ExceptionGroup#isOwnerConfigurable()).
+	public record GroupEntry(
+			String groupId, String category, List<FlagsStatusS2C.RoleValueEntry> resolvedByRole, String currentPreset, boolean ownerConfigurable
+	) {
+		private static final PacketCodec<RegistryByteBuf, List<FlagsStatusS2C.RoleValueEntry>> ROLE_VALUE_LIST_CODEC =
+				PacketCodecs.collection(ArrayList::new, FlagsStatusS2C.RoleValueEntry.CODEC);
+
 		public static final PacketCodec<RegistryByteBuf, GroupEntry> CODEC = PacketCodec.tuple(
 				PacketCodecs.STRING, GroupEntry::groupId,
 				PacketCodecs.STRING, GroupEntry::category,
-				PacketCodecs.BOOL, GroupEntry::enabled,
+				ROLE_VALUE_LIST_CODEC, GroupEntry::resolvedByRole,
+				PacketCodecs.STRING, GroupEntry::currentPreset,
 				PacketCodecs.BOOL, GroupEntry::ownerConfigurable,
 				GroupEntry::new
 		);

@@ -100,16 +100,23 @@ public class TeleportManagerImpl implements TeleportManager {
 					"Tu home estaba fuera de los límites actuales de tu isla; se ha reajustado al centro."), false);
 		}
 
-		// Homes set before SafeLandingChecker existed (via /island sethome without validation) may
-		// not have solid ground underneath anymore. Auto-correct to the center rather than send the
-		// player through a warmup only to drop them into a fresh fall on arrival.
+		// Homes set before SafeLandingChecker existed (via /island sethome without validation), or
+		// with a block broken out from under them since, may not have solid ground anymore —
+		// teleporting there would drop the player into the void, which (if enabled) hands off to
+		// VoidRescueListener; that used to fall back to this SAME unsafe point whenever it coincided
+		// with the island's center (home defaults to center on creation, so breaking the ground
+		// there breaks both at once), causing an actual infinite fall/rescue loop. Search outward
+		// for the nearest safe spot instead of blindly trusting the center, and persist the fix so
+		// this self-corrects once instead of re-running (and re-messaging the player) on every
+		// future /island home.
 		ServerWorld homeWorld = server != null ? server.getWorld(island.getDimension()) : null;
 		if (homeWorld != null && !SafeLandingChecker.isSafe(homeWorld, home)) {
-			BlockPos center = island.getCenter();
-			IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(island.getIslandId(), center);
-			home = center;
+			BlockPos safe = SafeLocationFinder.findNearestSafe(homeWorld, home, SafeLocationFinder.DEFAULT_SEARCH_RADIUS, island.getBounds())
+					.orElseGet(island::getCenter);
+			IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(island.getIslandId(), safe);
+			home = safe;
 			player.sendMessage(Text.literal(
-					"Tu home no tenía suelo seguro debajo; se ha reajustado al centro de tu isla."), false);
+					"Tu home no tenía suelo seguro debajo; se ha reajustado a un punto seguro cercano."), false);
 		}
 
 		pending.put(playerUuid, new PendingTeleport(
@@ -133,6 +140,19 @@ public class TeleportManagerImpl implements TeleportManager {
 
 		Island spawnIsland = maybeSpawnIsland.get();
 		BlockPos home = spawnIsland.getHomeLocation();
+
+		// Same broken-block-under-home safety net as requestHome above — the Spawn island is
+		// exactly as vulnerable to it (and, being everyone's fallback destination, arguably more
+		// disruptive when it breaks), but had no validation here at all before this fix.
+		ServerWorld spawnWorld = server != null ? server.getWorld(spawnIsland.getDimension()) : null;
+		if (spawnWorld != null && home != null && !SafeLandingChecker.isSafe(spawnWorld, home)) {
+			BlockPos safe = SafeLocationFinder.findNearestSafe(spawnWorld, home, SafeLocationFinder.DEFAULT_SEARCH_RADIUS, spawnIsland.getBounds())
+					.orElseGet(spawnIsland::getCenter);
+			IslandCoreMod.ISLAND_REGISTRY.updateHomeLocation(spawnIsland.getIslandId(), safe);
+			home = safe;
+			player.sendMessage(Text.literal(
+					"El home de Spawn no tenía suelo seguro debajo; se ha reajustado a un punto seguro cercano."), false);
+		}
 
 		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.SPAWN_COOLDOWN_BYPASS)) {
 			Instant last = lastSpawnAt.get(playerUuid);

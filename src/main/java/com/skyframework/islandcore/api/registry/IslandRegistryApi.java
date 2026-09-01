@@ -59,7 +59,20 @@ public interface IslandRegistryApi {
 
 	void updateRoleFlagOverride(UUID islandId, String flagId, TriState value);
 
-	void updateExceptionGroupOverride(UUID islandId, String groupId, Boolean value);
+	// The 4-way preset shortcut ("/island flags preset", FlagSetPresetC2S): preset is one of
+	// "nadie"/"miembros"/"aliados"/"todos" (see protection.flag.FlagPreset). Throws
+	// IllegalArgumentException if flagId doesn't resolve to a ROLE_BASED flag, or if preset isn't
+	// one of the 4 valid names. A no-op if islandId doesn't resolve to a loaded island (mirrors
+	// every other update* method here).
+	void applyFlagPreset(UUID islandId, String flagId, String preset);
+
+	// The 4-way preset shortcut for exception groups ("/island exceptions preset",
+	// ExceptionGroupSetPresetC2S) — exact mirror of applyFlagPreset above, but for
+	// ExceptionGroupRegistry groups instead of ROLE_BASED flags. Throws IllegalArgumentException if
+	// groupId doesn't resolve to a registered ExceptionGroup, or preset isn't one of the 4 valid
+	// names. A no-op if islandId doesn't resolve to a loaded island (mirrors every other update*
+	// method here).
+	void applyExceptionGroupPreset(UUID islandId, String groupId, String preset);
 
 	// Saves every currently loaded island; used as an extra safety net on server shutdown
 	// (individual mutations already persist themselves).
