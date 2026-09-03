@@ -2,6 +2,7 @@ package com.skyframework.islandcore.mixin;
 
 import com.skyframework.islandcore.protection.ExplosionProtectionListener;
 
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.explosion.Explosion;
 
@@ -24,8 +25,10 @@ public class ExplosionMixin {
 
 	@Inject(method = "affectWorld", at = @At("HEAD"))
 	private void islandcore$blockTerrainDamage(boolean particleEffects, CallbackInfo ci) {
-		if (ExplosionProtectionListener.isTerrainDamageBlocked(world)) {
-			((Explosion) (Object) this).clearAffectedBlocks();
+		Explosion self = (Explosion) (Object) this;
+		BlockPos pos = BlockPos.ofFloored(self.getPosition());
+		if (ExplosionProtectionListener.isTerrainDamageBlocked(world, pos)) {
+			self.clearAffectedBlocks();
 		}
 	}
 }

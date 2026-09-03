@@ -30,6 +30,7 @@ public final class FlagRegistry {
 	public static final Flag FIRE_SPREAD = registerGlobal("fire_spread");
 	public static final Flag PVP_DAMAGE = registerGlobal("pvp_damage");
 	public static final Flag MOB_DAMAGE = registerGlobal("mob_damage");
+	public static final Flag EXPLOSION_DAMAGE = registerGlobal("explosion_damage");
 
 	private FlagRegistry() {
 	}

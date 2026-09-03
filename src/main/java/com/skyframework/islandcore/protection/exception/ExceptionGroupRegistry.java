@@ -25,9 +25,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
-// Loaded from config/islandcore/exception_groups.json on SERVER_STARTED. Ships with 4 example
-// groups (doors, chests, redstone, animals), all off (preset "nadie") by default, if the file
-// doesn't exist yet. This file is the "código" layer of the exception resolution chain (see
+// Loaded from config/islandcore/exception_groups.json on SERVER_STARTED. Ships with 10 example
+// groups (doors, chests, redstone, animals, crops, furnaces, mechanisms, bells, lecterns, beds),
+// all off (preset "nadie") by default, if the file doesn't exist yet. This file is the "código"
+// layer of the exception resolution chain (see
 // ExceptionResolver) — an admin edits it by hand to change a group's compiled default preset;
 // runtime tuning happens one layer up via ServerExceptionDefaults ("/island admin exceptions
 // set-default"), which is why this registry no longer exposes any in-game mutator.
@@ -116,6 +117,24 @@ public class ExceptionGroupRegistry {
 						true, false, false, FlagPreset.NOBODY, true),
 				new ExceptionGroup("animals", ExceptionGroupCategory.ENTITY,
 						List.of("minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:cat", "minecraft:wolf", "minecraft:parrot"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("crops", ExceptionGroupCategory.BLOCK,
+						List.of("#minecraft:crops"),
+						false, true, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("furnaces", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:furnace", "minecraft:smoker", "minecraft:blast_furnace"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("mechanisms", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:lever", "minecraft:*_button"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("bells", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:bell"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("lecterns", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:lectern"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("beds", ExceptionGroupCategory.BLOCK,
+						List.of("#minecraft:beds"),
 						true, false, false, FlagPreset.NOBODY, true)
 		);
 

@@ -426,6 +426,7 @@ public class IslandCommand {
 			case "fire_spread" -> "Propagación de fuego";
 			case "pvp_damage" -> "Daño PvP";
 			case "mob_damage" -> "Daño de mobs";
+			case "explosion_damage" -> "Daño de explosiones";
 			default -> flag.getId();
 		};
 	}
