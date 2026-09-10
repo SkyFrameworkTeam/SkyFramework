@@ -18,6 +18,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.Heightmap;
 import net.minecraft.world.World;
 
 import java.time.Duration;
@@ -192,6 +193,8 @@ public class TeleportManagerImpl implements TeleportManager {
 			return ActionOutcome.fail(ActionReason.DIMENSION_UNAVAILABLE);
 		}
 
+		BlockPos farmingSpawn = resolveSafeFarmingSpawn(world);
+
 		if (!IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, IslandPermissions.FARMING_COOLDOWN_BYPASS)) {
 			Instant last = lastFarmingAt.get(playerUuid);
 			if (last != null) {
@@ -207,10 +210,35 @@ public class TeleportManagerImpl implements TeleportManager {
 		}
 
 		pending.put(playerUuid, new PendingTeleport(
-				playerUuid, targetDimension, world.getSpawnPos(), player.getPos(), HOME_WARMUP_TICKS, PendingTeleport.Kind.FARMING));
+				playerUuid, targetDimension, farmingSpawn, player.getPos(), HOME_WARMUP_TICKS, PendingTeleport.Kind.FARMING));
 
 		player.sendMessage(Text.literal("Preparando teletransporte a la zona de farmeo. No te muevas ni recibas daño."), false);
 		return ActionOutcome.ok();
+	}
+
+	// world.getSpawnPos() for a generated dimension is just wherever world generation happened to
+	// place it — nothing guarantees it's not buried in solid terrain, which is exactly what players
+	// were hitting (suffocating underground right after /island farming). Unlike requestHome/
+	// requestSpawn (whose target is a specific, arbitrary block that can only ever lose its footing
+	// one block at a time), the farming spawn point is a single fixed, known column, so first try
+	// correcting straight up that column via the world's heightmap — same idiom SafeRandomTeleportFinder
+	// already uses for /island rtp — before falling back to SafeLocationFinder's outward 2D search
+	// (used by requestHome/requestSpawn) and, as a last resort, the untouched raw spawn point.
+	private BlockPos resolveSafeFarmingSpawn(ServerWorld world) {
+		BlockPos spawnPos = world.getSpawnPos();
+		if (SafeLandingChecker.isSafe(world, spawnPos)) {
+			return spawnPos;
+		}
+
+		world.getChunk(spawnPos.getX() >> 4, spawnPos.getZ() >> 4);
+		int topY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, spawnPos.getX(), spawnPos.getZ());
+		BlockPos aboveTerrain = new BlockPos(spawnPos.getX(), topY, spawnPos.getZ());
+		if (SafeLandingChecker.isSafe(world, aboveTerrain)) {
+			return aboveTerrain;
+		}
+
+		return SafeLocationFinder.findNearestSafe(world, aboveTerrain, SafeLocationFinder.DEFAULT_SEARCH_RADIUS)
+				.orElse(spawnPos);
 	}
 
 	@Override
