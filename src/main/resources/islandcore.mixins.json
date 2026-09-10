@@ -5,10 +5,13 @@
 	"mixins": [
 		"ChunkTicketManagerMixin",
 		"ExplosionMixin",
+		"FarmlandTrampleMixin",
 		"FireSpreadMixin",
 		"LightningFireMixin",
 		"PortalDestinationMixin",
-		"PortalIgnitionMixin"
+		"PortalIgnitionMixin",
+		"RaidManagerMixin",
+		"SpawnHelperMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

@@ -44,13 +44,14 @@ public final class ExceptionResolver {
 	}
 
 	// Resolution order (highest priority first): isla -> servidor -> código — exactly
-	// FlagResolver.resolveForRole's chain, reused here for exception groups. OWNER/DENIED never get
-	// an island or server override (FlagPreset#toRoleValues only ever covers VISITOR/ALLY/MEMBER/
-	// TRUSTED, same as every other preset in this codebase) and the group's own compiled
-	// defaultPreset doesn't cover them either, so this always resolves to "not enabled" for those two
-	// roles — which is correct: OWNER already has full access via FlagResolver's own OWNER
-	// short-circuit regardless of any exception group, and DENIED must never be able to bypass an
-	// explicit per-player block through a group exception.
+	// FlagResolver.resolveForRole's chain, reused here for exception groups. OWNER/CO_OWNER/DENIED
+	// never get an island or server override (FlagPreset#toRoleValues only ever covers
+	// VISITOR/ALLY/MEMBER, same as every other preset in this codebase) and the group's own
+	// compiled defaultPreset doesn't cover them either, so this always resolves to "not enabled" for
+	// those three roles — which is correct: OWNER and CO_OWNER already have full access via
+	// FlagResolver's own hard short-circuits regardless of any exception group (see IslandRole's
+	// javadoc), and DENIED must never be able to bypass an explicit per-player block through a
+	// group exception.
 	public static boolean isEnabledForRole(Island island, IslandRole role, ExceptionGroup group) {
 		TriState islandOverride = island.getRoleExceptionGroupOverride(group.getId(), role);
 		if (islandOverride != TriState.DEFAULT) {
@@ -79,7 +80,7 @@ public final class ExceptionResolver {
 		return codeDefault != null && codeDefault.toBoolean();
 	}
 
-	// The VISITOR/ALLY/MEMBER/TRUSTED combination currently resolved for this group on this island,
+	// The VISITOR/ALLY/MEMBER combination currently resolved for this group on this island,
 	// expressed as a preset id ("nadie"/"miembros"/"aliados"/"todos"), or "custom" if it doesn't
 	// exactly match any of the 4 — mirrors FlagPreset#matching's role for flags. Used by both
 	// "/island exceptions list" and FlagsStatusBuilder's network status, so text and network always
@@ -88,8 +89,7 @@ public final class ExceptionResolver {
 		boolean visitor = isEnabledForRole(island, IslandRole.VISITOR, group);
 		boolean ally = isEnabledForRole(island, IslandRole.ALLY, group);
 		boolean member = isEnabledForRole(island, IslandRole.MEMBER, group);
-		boolean trusted = isEnabledForRole(island, IslandRole.TRUSTED, group);
-		return FlagPreset.matching(visitor, ally, member, trusted).map(FlagPreset::getId).orElse("custom");
+		return FlagPreset.matching(visitor, ally, member).map(FlagPreset::getId).orElse("custom");
 	}
 
 	private static boolean matchesAny(ExceptionGroup group, Identifier objectId, ExceptionGroupCategory category) {

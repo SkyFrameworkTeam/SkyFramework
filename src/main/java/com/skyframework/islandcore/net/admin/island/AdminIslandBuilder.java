@@ -99,7 +99,7 @@ public final class AdminIslandBuilder {
 		members.add(new IslandSnapshotS2C.MemberEntry(
 				island.getOwnerUuid(), resolveName(server, island.getOwnerUuid()), IslandRole.OWNER.name()));
 		for (IslandMember member : island.getMembers()) {
-			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED) {
+			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.CO_OWNER) {
 				continue;
 			}
 			members.add(new IslandSnapshotS2C.MemberEntry(
@@ -144,7 +144,7 @@ public final class AdminIslandBuilder {
 	private static int countMembers(Island island) {
 		int count = 0;
 		for (IslandMember member : island.getMembers()) {
-			if (member.role() == IslandRole.MEMBER || member.role() == IslandRole.TRUSTED) {
+			if (member.role() == IslandRole.MEMBER || member.role() == IslandRole.CO_OWNER) {
 				count++;
 			}
 		}

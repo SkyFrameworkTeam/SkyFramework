@@ -32,8 +32,7 @@ public final class AdminDefaultsBuilder {
 			boolean visitor = FlagResolver.resolveServerDefaultForRole(IslandRole.VISITOR, flag).toBoolean();
 			boolean ally = FlagResolver.resolveServerDefaultForRole(IslandRole.ALLY, flag).toBoolean();
 			boolean member = FlagResolver.resolveServerDefaultForRole(IslandRole.MEMBER, flag).toBoolean();
-			boolean trusted = FlagResolver.resolveServerDefaultForRole(IslandRole.TRUSTED, flag).toBoolean();
-			String currentPreset = FlagPreset.matching(visitor, ally, member, trusted).map(FlagPreset::getId).orElse("custom");
+			String currentPreset = FlagPreset.matching(visitor, ally, member).map(FlagPreset::getId).orElse("custom");
 
 			flagDefaults.add(new AdminDefaultsStatusS2C.FlagDefaultEntry(flag.getId(), currentPreset));
 		}
@@ -43,8 +42,7 @@ public final class AdminDefaultsBuilder {
 			boolean visitor = ExceptionResolver.isEnabledForRoleServerDefault(IslandRole.VISITOR, group);
 			boolean ally = ExceptionResolver.isEnabledForRoleServerDefault(IslandRole.ALLY, group);
 			boolean member = ExceptionResolver.isEnabledForRoleServerDefault(IslandRole.MEMBER, group);
-			boolean trusted = ExceptionResolver.isEnabledForRoleServerDefault(IslandRole.TRUSTED, group);
-			String currentPreset = FlagPreset.matching(visitor, ally, member, trusted).map(FlagPreset::getId).orElse("custom");
+			String currentPreset = FlagPreset.matching(visitor, ally, member).map(FlagPreset::getId).orElse("custom");
 
 			exceptionDefaults.add(new AdminDefaultsStatusS2C.ExceptionDefaultEntry(group.getId(), currentPreset));
 		}

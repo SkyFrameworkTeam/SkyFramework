@@ -45,7 +45,7 @@ public record AdminDefaultsStatusS2C(List<FlagDefaultEntry> flagDefaults, List<E
 
 	// currentPreset: "nadie"/"miembros"/"aliados"/"todos" if the server default (or, absent that,
 	// the flag's own hardcoded table) exactly matches one of those 4 combinations for
-	// VISITOR/ALLY/MEMBER/TRUSTED, or "custom" if not — see FlagResolver#resolveServerDefaultForRole
+	// VISITOR/ALLY/MEMBER, or "custom" if not — see FlagResolver#resolveServerDefaultForRole
 	// and FlagPreset#matching.
 	public record FlagDefaultEntry(String flagId, String currentPreset) {
 		public static final PacketCodec<RegistryByteBuf, FlagDefaultEntry> CODEC = PacketCodec.tuple(

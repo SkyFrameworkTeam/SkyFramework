@@ -8,11 +8,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-// Every flag this sprint introduces, registered once at class-load time. The ROLE_BASED flags'
-// per-role default table reproduces exactly what IslandData.hasPermission's own (now unused for
-// these six) defaultPermission() switch hardcoded: OWNER always ALLOW, MEMBER/TRUSTED ALLOW except
-// REDSTONE (DENY), VISITOR/DENIED always DENY — see FlagResolver for why preserving this table
-// verbatim keeps today's observable behavior unchanged when nothing overrides it.
+// Every flag this sprint introduces, registered once at class-load time. Every ROLE_BASED flag's
+// compiled ("código") default table is now uniform: OWNER always ALLOW, MEMBER/ALLY/VISITOR/DENIED
+// always DENY until the island owner explicitly opens it via a preset — CO_OWNER is deliberately
+// NOT in this table at all, since it's a hard-coded always-ALLOW role FlagResolver short-circuits
+// before ever consulting it (see IslandRole's javadoc).
+//
+// "redstone" (the ROLE_BASED flag) was retired: evidence check before removal — grep across
+// AccessControllerImpl/protection listeners found no canBreak/canPlace/canInteractBlock/
+// canOpenContainer/canInteractEntity call ever passed FlagRegistry.REDSTONE, so it was registered,
+// listable, and configurable but never actually enforced. Placing/breaking redstone components was
+// already covered by CONSTRUCCION; activating them (levers, buttons) is covered by INTERACT, with
+// the separate "redstone"/"mechanisms" EXCEPTION GROUPS (still present, unrelated to this flag)
+// providing the opt-in bypass for otherwise-denied roles — see ExceptionGroupRegistry.
 public final class FlagRegistry {
 
 	private static final Map<String, Flag> FLAGS = new LinkedHashMap<>();
@@ -20,28 +28,32 @@ public final class FlagRegistry {
 	// Merges the old separate "build"/"break" flags into one: placing and breaking blocks are the
 	// same trust decision in practice (an owner who lets a member build almost always also lets
 	// them break what they placed), and having them as two flags/two rows in the UI without a clear
-	// distinction was confusing more than it helped. Same default table "build" had.
-	public static final Flag CONSTRUCCION = registerRoleBased("construccion", false);
-	public static final Flag INTERACT = registerRoleBased("interact", false);
-	public static final Flag CONTAINERS = registerRoleBased("containers", false);
-	public static final Flag ENTITIES = registerRoleBased("entities", false);
-	public static final Flag REDSTONE = registerRoleBased("redstone", true);
+	// distinction was confusing more than it helped.
+	public static final Flag CONSTRUCCION = registerRoleBased("construccion");
+	public static final Flag INTERACT = registerRoleBased("interact");
+	public static final Flag ENTITIES = registerRoleBased("entities");
 
 	public static final Flag FIRE_SPREAD = registerGlobal("fire_spread");
 	public static final Flag PVP_DAMAGE = registerGlobal("pvp_damage");
 	public static final Flag MOB_DAMAGE = registerGlobal("mob_damage");
 	public static final Flag EXPLOSION_DAMAGE = registerGlobal("explosion_damage");
+	public static final Flag CROP_TRAMPLE = registerGlobal("crop_trample");
+	// Scoped to hostile (SpawnGroup.MONSTER) natural spawns only — see SpawnHelperMixin — despite
+	// the generic-sounding id, matching the investigation this implements (natural HOSTILE mob
+	// spawning specifically), not passive animals/villagers.
+	public static final Flag NATURAL_MOB_SPAWNING = registerGlobal("natural_mob_spawning");
+	public static final Flag RAIDS = registerGlobal("raids");
 
 	private FlagRegistry() {
 	}
 
-	private static Flag registerRoleBased(String id, boolean denyMemberAndTrusted) {
+	private static Flag registerRoleBased(String id) {
 		Map<IslandRole, TriState> table = new EnumMap<>(IslandRole.class);
 		table.put(IslandRole.OWNER, TriState.ALLOW);
-		table.put(IslandRole.MEMBER, denyMemberAndTrusted ? TriState.DENY : TriState.ALLOW);
-		table.put(IslandRole.TRUSTED, denyMemberAndTrusted ? TriState.DENY : TriState.ALLOW);
-		// Same default as VISITOR: fully denied until the island owner explicitly opens this flag
-		// for ALLY via /island flags set <flag> ally allow.
+		// MEMBER now shares ALLY/VISITOR's compiled default: fully denied until the island owner
+		// explicitly opens this flag via a preset ("/island flags preset <flag> miembros" or
+		// higher) — no more special-cased ALLOW-by-default for MEMBER.
+		table.put(IslandRole.MEMBER, TriState.DENY);
 		table.put(IslandRole.ALLY, TriState.DENY);
 		table.put(IslandRole.VISITOR, TriState.DENY);
 		table.put(IslandRole.DENIED, TriState.DENY);

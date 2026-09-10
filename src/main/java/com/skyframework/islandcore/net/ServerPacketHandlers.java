@@ -55,6 +55,7 @@ import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsBuilder;
 import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsStatusRequestC2S;
 import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsStatusS2C;
 import com.skyframework.islandcore.net.admin.defaults.AdminExceptionSetServerDefaultC2S;
+import com.skyframework.islandcore.net.admin.defaults.AdminFlagSetRequirementC2S;
 import com.skyframework.islandcore.net.admin.defaults.AdminFlagSetServerDefaultC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupSetPresetC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusRequestC2S;
@@ -234,6 +235,7 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playS2C().register(AdminDefaultsStatusS2C.ID, AdminDefaultsStatusS2C.CODEC);
 		PayloadTypeRegistry.playC2S().register(AdminFlagSetServerDefaultC2S.ID, AdminFlagSetServerDefaultC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(AdminExceptionSetServerDefaultC2S.ID, AdminExceptionSetServerDefaultC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(AdminFlagSetRequirementC2S.ID, AdminFlagSetRequirementC2S.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(PartyStatusRequestC2S.ID, PartyStatusRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(PartyStatusS2C.ID, PartyStatusS2C.CODEC);
@@ -349,9 +351,12 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
+		// Toggles the target between MEMBER and CO_OWNER depending on their current role — see
+		// MembershipService#toggleCoOwner. The MembersScreen "Trust" button reflects this by showing
+		// the current state and calling this same packet either direction.
 		registerGuarded(MemberTrustC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
-			ActionOutcome<Void> outcome = MembershipService.trust(player, payload.targetUuid());
+			ActionOutcome<Void> outcome = MembershipService.toggleCoOwner(player, payload.targetUuid());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
@@ -432,7 +437,7 @@ public final class ServerPacketHandlers {
 				return;
 			}
 
-			ServerPlayNetworking.send(player, FlagsStatusBuilder.buildFlagsStatus(maybeIsland.get()));
+			ServerPlayNetworking.send(player, FlagsStatusBuilder.buildFlagsStatus(maybeIsland.get(), player.getUuid()));
 		});
 
 		registerGuarded(FlagSetC2S.ID, (payload, context) -> {
@@ -548,6 +553,22 @@ public final class ServerPacketHandlers {
 			}
 
 			IslandCoreMod.SERVER_EXCEPTION_DEFAULTS.setDefault(payload.groupId(), preset.get());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(AdminFlagSetRequirementC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			if (FlagRegistry.get(payload.flagId()).isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.FLAG_NOT_FOUND));
+				return;
+			}
+
+			String node = payload.permissionNode().isEmpty() ? null : payload.permissionNode();
+			IslandCoreMod.FLAG_PERMISSION_REQUIREMENTS.setRequiredPermission(payload.flagId(), node);
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 	}
@@ -1058,13 +1079,13 @@ public final class ServerPacketHandlers {
 		});
 	}
 
-	// Same MEMBER/TRUSTED filter AdminIslandBuilder#countMembers and IslandSnapshotBuilder already
+	// Same MEMBER/CO_OWNER filter AdminIslandBuilder#countMembers and IslandSnapshotBuilder already
 	// apply elsewhere: the owner (here, the synthetic Island.SERVER_OWNER_UUID — not a real player)
 	// is never included.
 	private static List<SpawnBuildProtectionStatusS2C.AuthorizedPlayerEntry> buildAuthorizedPlayers(MinecraftServer server, Island island) {
 		List<SpawnBuildProtectionStatusS2C.AuthorizedPlayerEntry> entries = new ArrayList<>();
 		for (IslandMember member : island.getMembers()) {
-			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED) {
+			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.CO_OWNER) {
 				continue;
 			}
 			entries.add(new SpawnBuildProtectionStatusS2C.AuthorizedPlayerEntry(

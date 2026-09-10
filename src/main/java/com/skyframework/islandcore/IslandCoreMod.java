@@ -44,6 +44,7 @@ import com.skyframework.islandcore.protection.DeniedActionThrottler;
 import com.skyframework.islandcore.protection.ProtectionListeners;
 import com.skyframework.islandcore.protection.exception.ExceptionGroupRegistry;
 import com.skyframework.islandcore.protection.exception.ServerExceptionDefaults;
+import com.skyframework.islandcore.protection.flag.FlagPermissionRequirements;
 import com.skyframework.islandcore.protection.flag.ServerFlagDefaults;
 import com.skyframework.islandcore.rtp.RtpCommand;
 import com.skyframework.islandcore.rtp.RtpConfig;
@@ -105,6 +106,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static ServerFlagDefaults SERVER_FLAG_DEFAULTS;
 	public static ExceptionGroupRegistry EXCEPTION_GROUP_REGISTRY;
 	public static ServerExceptionDefaults SERVER_EXCEPTION_DEFAULTS;
+	public static FlagPermissionRequirements FLAG_PERMISSION_REQUIREMENTS;
 	public static PartyRegistry PARTY_REGISTRY;
 	public static PartyInviteManager PARTY_INVITE_MANAGER;
 
@@ -140,6 +142,7 @@ public class IslandCoreMod implements ModInitializer {
 		SERVER_FLAG_DEFAULTS = new ServerFlagDefaults();
 		EXCEPTION_GROUP_REGISTRY = new ExceptionGroupRegistry();
 		SERVER_EXCEPTION_DEFAULTS = new ServerExceptionDefaults();
+		FLAG_PERMISSION_REQUIREMENTS = new FlagPermissionRequirements();
 		// Independent of ISLAND_REGISTRY (see PartyRegistryImpl's class comment): its own
 		// self-contained SERVER_STARTED hook loads party storage, same pattern as DIMENSION_REGISTRY.
 		PARTY_REGISTRY = new PartyRegistryImpl();
@@ -192,6 +195,10 @@ public class IslandCoreMod implements ModInitializer {
 		// no-attacker fall-out-of-world case this handles).
 		ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) ->
 				VoidRescueListener.isDamageAllowed(entity, source));
+		// Second, independent void-rescue detection path: a periodic Y-position check that catches
+		// Creative-mode players, who are invulnerable to OUT_OF_WORLD damage and so never trigger
+		// the ALLOW_DAMAGE listener above — see VoidRescueListener's class javadoc.
+		ServerTickEvents.END_SERVER_TICK.register(VoidRescueListener::tickAll);
 
 		// Welcome teleport for brand-new players by default; reconnecting players keep vanilla's
 		// normal "reappear where you left off" behavior UNLESS SpawnConfig.alwaysRespawnOnDisconnect

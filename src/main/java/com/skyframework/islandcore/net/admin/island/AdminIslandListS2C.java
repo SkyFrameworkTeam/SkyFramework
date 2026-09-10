@@ -43,7 +43,7 @@ public record AdminIslandListS2C(List<IslandEntry> islands, int totalPages, int 
 	 * {@code maxSize} (from {@code PermissionProvider#getHighestSizeAllowed}), {@code type} (island
 	 * type id), {@code currentBiomeId} (a LIVE lookup of the biome at the island's center block,
 	 * not the persisted {@code IslandData#currentBiomeId} tracking field — see
-	 * {@link AdminIslandBuilder}), {@code state}, {@code memberCount} (MEMBER/TRUSTED roles only,
+	 * {@link AdminIslandBuilder}), {@code state}, {@code memberCount} (MEMBER/CO_OWNER roles only,
 	 * owner not counted — same filter {@code IslandMessages}/{@code IslandSnapshotBuilder} already
 	 * apply to member lists), {@code isSpawnIsland} (NEW — true when {@code ownerUuid} is
 	 * {@code Island.SERVER_OWNER_UUID}; see {@link AdminIslandBuilder#buildList} for how this row

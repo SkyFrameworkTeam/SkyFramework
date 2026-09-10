@@ -48,9 +48,13 @@ public record FlagsStatusS2C(List<FlagEntry> flags) implements CustomPayload {
 	 * overrides every role uniformly, see {@code IslandData#setRoleFlagOverrideForAllRoles}),
 	 * {@code currentPreset} (ROLE_BASED only, added after {@code islandOverride} — the
 	 * {@link com.skyframework.islandcore.protection.flag.FlagPreset#getId()} whose VISITOR/ALLY/
-	 * MEMBER/TRUSTED combination exactly matches this flag's current {@code resolvedByRole} values,
+	 * MEMBER combination exactly matches this flag's current {@code resolvedByRole} values,
 	 * or {@code "custom"} if none match; always {@code ""} — not applicable — for an ISLAND_GLOBAL
-	 * entry).
+	 * entry), {@code missingRequiredPermission} ({@code true} only if
+	 * {@code FlagPermissionRequirements} has a node set for this flag AND the requesting player
+	 * (the island owner — this payload is only ever built for them) lacks it; presentation only,
+	 * the real gate stays server-side in {@code IslandActionService#updateFlag}/{@code
+	 * applyFlagPreset}).
 	 */
 	public record FlagEntry(
 			String flagId,
@@ -58,19 +62,33 @@ public record FlagsStatusS2C(List<FlagEntry> flags) implements CustomPayload {
 			boolean resolvedValue,
 			List<RoleValueEntry> resolvedByRole,
 			String islandOverride,
-			String currentPreset
+			String currentPreset,
+			boolean missingRequiredPermission
 	) {
 		private static final PacketCodec<RegistryByteBuf, List<RoleValueEntry>> ROLE_VALUE_LIST_CODEC =
 				PacketCodecs.collection(ArrayList::new, RoleValueEntry.CODEC);
 
-		public static final PacketCodec<RegistryByteBuf, FlagEntry> CODEC = PacketCodec.tuple(
-				PacketCodecs.STRING, FlagEntry::flagId,
-				PacketCodecs.STRING, FlagEntry::category,
-				PacketCodecs.BOOL, FlagEntry::resolvedValue,
-				ROLE_VALUE_LIST_CODEC, FlagEntry::resolvedByRole,
-				PacketCodecs.STRING, FlagEntry::islandOverride,
-				PacketCodecs.STRING, FlagEntry::currentPreset,
-				FlagEntry::new
+		// 7 fields is past PacketCodec#tuple's 6-argument limit (like AdminIslandDetailS2C), so this
+		// is hand-written with PacketCodec#of instead.
+		public static final PacketCodec<RegistryByteBuf, FlagEntry> CODEC = PacketCodec.of(
+				(value, buf) -> {
+					PacketCodecs.STRING.encode(buf, value.flagId());
+					PacketCodecs.STRING.encode(buf, value.category());
+					PacketCodecs.BOOL.encode(buf, value.resolvedValue());
+					ROLE_VALUE_LIST_CODEC.encode(buf, value.resolvedByRole());
+					PacketCodecs.STRING.encode(buf, value.islandOverride());
+					PacketCodecs.STRING.encode(buf, value.currentPreset());
+					PacketCodecs.BOOL.encode(buf, value.missingRequiredPermission());
+				},
+				buf -> new FlagEntry(
+						PacketCodecs.STRING.decode(buf),
+						PacketCodecs.STRING.decode(buf),
+						PacketCodecs.BOOL.decode(buf),
+						ROLE_VALUE_LIST_CODEC.decode(buf),
+						PacketCodecs.STRING.decode(buf),
+						PacketCodecs.STRING.decode(buf),
+						PacketCodecs.BOOL.decode(buf)
+				)
 		);
 	}
 

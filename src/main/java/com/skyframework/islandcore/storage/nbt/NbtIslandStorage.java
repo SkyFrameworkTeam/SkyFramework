@@ -267,7 +267,7 @@ public class NbtIslandStorage implements IslandStorage {
 			NbtCompound memberNbt = list.getCompound(i);
 
 			UUID playerUuid = memberNbt.getUuid("playerUuid");
-			IslandRole role = IslandRole.valueOf(memberNbt.getString("role"));
+			IslandRole role = parseRoleWithLegacyMigration(memberNbt.getString("role"));
 			Instant addedAt = Instant.ofEpochMilli(memberNbt.getLong("addedAt"));
 
 			EnumSet<IslandPermission> overrides = EnumSet.noneOf(IslandPermission.class);
@@ -293,6 +293,16 @@ public class NbtIslandStorage implements IslandStorage {
 		}
 
 		return members;
+	}
+
+	// Pre-rename islands may still have members stored with the old "TRUSTED" role name — same
+	// concept, renamed (see IslandRole's javadoc): reinterpreted as CO_OWNER on load, re-persisted
+	// under the new name the next time this island saves.
+	private static IslandRole parseRoleWithLegacyMigration(String raw) {
+		if ("TRUSTED".equals(raw)) {
+			return IslandRole.CO_OWNER;
+		}
+		return IslandRole.valueOf(raw);
 	}
 
 	private static NbtCompound settingsToNbt(IslandData island) {
@@ -351,6 +361,13 @@ public class NbtIslandStorage implements IslandStorage {
 			NbtCompound perRoleNbt = nbt.getCompound(flagId);
 			Map<IslandRole, TriState> perRole = new EnumMap<>(IslandRole.class);
 			for (String roleName : perRoleNbt.getKeys()) {
+				// Pre-rename islands may have a per-role override specifically for the old TRUSTED
+				// role. CO_OWNER is now a hard-coded always-ALLOW rule FlagResolver never consults
+				// any override for (see IslandRole's javadoc), so any such override no longer
+				// applies — discarded on load rather than migrated, per this sprint's design.
+				if ("TRUSTED".equals(roleName)) {
+					continue;
+				}
 				try {
 					perRole.put(IslandRole.valueOf(roleName), TriState.valueOf(perRoleNbt.getString(roleName)));
 				} catch (IllegalArgumentException e) {
@@ -405,6 +422,10 @@ public class NbtIslandStorage implements IslandStorage {
 				NbtCompound perRoleNbt = nbt.getCompound(groupId);
 				Map<IslandRole, TriState> perRole = new EnumMap<>(IslandRole.class);
 				for (String roleName : perRoleNbt.getKeys()) {
+					// Same TRUSTED-discard migration as roleFlagOverridesFromNbt above.
+					if ("TRUSTED".equals(roleName)) {
+						continue;
+					}
 					try {
 						perRole.put(IslandRole.valueOf(roleName), TriState.valueOf(perRoleNbt.getString(roleName)));
 					} catch (IllegalArgumentException e) {

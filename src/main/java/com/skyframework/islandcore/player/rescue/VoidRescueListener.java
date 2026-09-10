@@ -12,6 +12,7 @@ import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
@@ -21,16 +22,32 @@ import net.minecraft.world.World;
 
 import java.util.Optional;
 
-// Called from IslandCoreMod's third, independent ServerLivingEntityEvents.ALLOW_DAMAGE listener:
-// an emergency rescue teleport for a player who falls out of the world over islandcore:islands (a
-// flat void dimension — see data/islandcore/dimension/islands.json — so OUT_OF_WORLD damage is the
-// normal way to fall off the edge of an unbuilt plot, not a rare edge case). Deliberately no
-// countdown/cooldown like /island home has: this is a safety net triggered by the game, not an
-// action the player chose to invoke.
+// An emergency rescue teleport for a player who falls out of the world over islandcore:islands (a
+// flat void dimension — see data/islandcore/dimension/islands.json — so falling off the edge of an
+// unbuilt plot is the normal way to end up here, not a rare edge case). Deliberately no
+// countdown/cooldown like /island home has: this is a safety net, not an action the player chose.
+//
+// Two independent detection paths, both funneling into the same rescue() below:
+//  - isDamageAllowed, hooked to ServerLivingEntityEvents.ALLOW_DAMAGE (IslandCoreMod's third,
+//    independent listener on that event) — fires on OUT_OF_WORLD damage, the normal Survival case.
+//  - tickAll, hooked to ServerTickEvents.END_SERVER_TICK — a periodic Y-position check, needed
+//    because a Creative-mode player is invulnerable to OUT_OF_WORLD damage (LivingEntity#damage's
+//    own invulnerability short-circuit runs before ALLOW_DAMAGE ever fires for them), so
+//    isDamageAllowed never runs for a Creative player and they would otherwise fall forever until
+//    switching to Survival. Confirmed by reading LivingEntity's damage/invulnerability handling —
+//    this isn't a hypothetical, Creative genuinely never reaches the event this class used to rely
+//    on exclusively.
 public final class VoidRescueListener {
 
 	private static final RegistryKey<World> ISLANDS_DIMENSION =
 			RegistryKey.of(RegistryKeys.WORLD, Identifier.of("islandcore", "islands"));
+
+	// Matches IslandRegistryImpl's own MIN_Y (the islandcore:islands dimension's configured build
+	// floor) plus a small margin: a player this far below the floor has unambiguously fallen out,
+	// whether or not they've ever taken (or could take) OUT_OF_WORLD damage for it.
+	private static final int MIN_Y = -64;
+	private static final int FALL_RESCUE_MARGIN = 16;
+	private static final int FALL_RESCUE_THRESHOLD_Y = MIN_Y + FALL_RESCUE_MARGIN;
 
 	private static final TeleportBackend BACKEND = new VanillaTeleportBackend();
 
@@ -46,20 +63,47 @@ public final class VoidRescueListener {
 			return true;
 		}
 
+		return !rescue(player);
+	}
+
+	// Independent of any damage event — see class javadoc for why this exists. Iterates online
+	// players instead of hooking a per-entity event: cheap (typical server player counts), and
+	// mirrors the ServerTickEvents.END_SERVER_TICK + tickAll() pattern already used by
+	// TeleportManagerImpl/IslandDeletionServiceImpl/VanillaResetService.
+	public static void tickAll(MinecraftServer server) {
+		if (!IslandCoreMod.VOID_RESCUE_CONFIG.isEnabled()) {
+			return;
+		}
+
+		for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+			if (!player.getWorld().getRegistryKey().equals(ISLANDS_DIMENSION)) {
+				continue;
+			}
+			if (player.getY() > FALL_RESCUE_THRESHOLD_Y) {
+				continue;
+			}
+			rescue(player);
+		}
+	}
+
+	// Shared by both detection paths above: resolves the player's own island (or Spawn if they
+	// don't have one) and its home location, validating/self-correcting it exactly the same way
+	// regardless of which path triggered the rescue. Returns whether a teleport actually happened.
+	private static boolean rescue(ServerPlayerEntity player) {
 		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(player.getUuid());
 		if (maybeIsland.isEmpty()) {
 			maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
 		}
 		if (maybeIsland.isEmpty()) {
 			// No island of their own and no Spawn island either: nowhere reasonable to rescue
-			// them to, so let the fall-out-of-world damage through as vanilla would.
-			return true;
+			// them to.
+			return false;
 		}
 
 		Island island = maybeIsland.get();
 		ServerWorld world = player.getServer().getWorld(island.getDimension());
 		if (world == null) {
-			return true;
+			return false;
 		}
 
 		// homeLocation may have had a block broken out from under it since it was set: don't hand
@@ -67,8 +111,8 @@ public final class VoidRescueListener {
 		// nearest safe spot instead of blindly trusting the island's center — home defaults to
 		// center on creation (see TeleportManagerImpl#requestHome), so if the player broke ground
 		// right there, center is unsafe too, and falling back to it unchecked used to rescue them
-		// into the exact same hole, looping forever. Persisted via updateHomeLocation (this listener
-		// never did before) so this self-corrects once instead of re-triggering on every future fall.
+		// into the exact same hole, looping forever. Persisted via updateHomeLocation so this
+		// self-corrects once instead of re-triggering on every future fall.
 		BlockPos destination = island.getHomeLocation();
 		if (destination == null || !SafeLandingChecker.isSafe(world, destination)) {
 			BlockPos searchOrigin = destination != null ? destination : island.getCenter();
@@ -81,11 +125,14 @@ public final class VoidRescueListener {
 		// player.teleport(...) (ServerPlayerEntity#teleport -> requestTeleport, confirmed via
 		// decompiled ServerPlayerEntity/ServerPlayNetworkHandler/Entity sources) only repositions
 		// the entity — it never touches fallDistance or velocity. Without this, the player would
-		// take fall damage for the entire void fall the instant they "land" at the rescue spot.
+		// take fall damage for the entire void fall the instant they "land" at the rescue spot
+		// (or, for the tick-based path, simply keep falling past the rescue point if velocity isn't
+		// zeroed).
 		if (BACKEND.teleport(player, world, destination)) {
 			player.fallDistance = 0.0f;
 			player.setVelocity(Vec3d.ZERO);
 			player.velocityDirty = true;
+			return true;
 		}
 		return false;
 	}

@@ -100,6 +100,11 @@ public final class MembershipService {
 		return ActionOutcome.ok(island);
 	}
 
+	// Promotes to CO_OWNER unconditionally: whether targetUuid was already a plain MEMBER or not a
+	// member at all, they end up CO_OWNER — addMember's upsert-by-playerUuid handles both cases the
+	// same way, no invitation/acceptance needed (matches trust's historical no-invite behavior).
+	// CO_OWNER is a hard-coded always-ALLOW role (see IslandRole's javadoc) — this is the only way
+	// into it.
 	public static ActionOutcome<Void> trust(ServerPlayerEntity executor, UUID targetUuid) {
 		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
 		if (maybeIsland.isEmpty()) {
@@ -107,12 +112,16 @@ public final class MembershipService {
 		}
 
 		Island island = maybeIsland.get();
-		IslandMember member = new IslandMember(targetUuid, IslandRole.TRUSTED, Instant.now(), EnumSet.noneOf(IslandPermission.class));
+		IslandMember member = new IslandMember(targetUuid, IslandRole.CO_OWNER, Instant.now(), EnumSet.noneOf(IslandPermission.class));
 		IslandCoreMod.ISLAND_REGISTRY.addMember(island.getIslandId(), member);
 
 		return ActionOutcome.ok();
 	}
 
+	// Demotes an existing CO_OWNER back to plain MEMBER — does NOT remove them from the island (use
+	// kick()/removeMember() for that). Fails with NOT_CO_OWNER if the target isn't currently
+	// CO_OWNER: untrust only ever applies to someone who actually holds that status, there's
+	// nothing to "un-trust" about a plain MEMBER.
 	public static ActionOutcome<Void> untrust(ServerPlayerEntity executor, UUID targetUuid) {
 		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
 		if (maybeIsland.isEmpty()) {
@@ -120,13 +129,39 @@ public final class MembershipService {
 		}
 
 		Island island = maybeIsland.get();
-		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), targetUuid);
+		if (island.getRoleOf(targetUuid) != IslandRole.CO_OWNER) {
+			return ActionOutcome.fail(ActionReason.NOT_CO_OWNER);
+		}
+
+		IslandMember member = new IslandMember(targetUuid, IslandRole.MEMBER, Instant.now(), EnumSet.noneOf(IslandPermission.class));
+		IslandCoreMod.ISLAND_REGISTRY.addMember(island.getIslandId(), member);
 
 		return ActionOutcome.ok();
 	}
 
+	// The network entry point for MembersScreen's "Trust" toggle button (MemberTrustC2S): promotes
+	// a MEMBER to CO_OWNER or demotes a CO_OWNER back to MEMBER depending on the target's CURRENT
+	// role, so one button/one packet covers both directions. Fails with NOT_A_MEMBER for anyone who
+	// is neither (ALLY/VISITOR) — the client only ever shows this button on MEMBER/CO_OWNER rows,
+	// so that's a defensive guard, not an expected path.
+	public static ActionOutcome<Void> toggleCoOwner(ServerPlayerEntity executor, UUID targetUuid) {
+		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+
+		IslandRole role = maybeIsland.get().getRoleOf(targetUuid);
+		if (role == IslandRole.CO_OWNER) {
+			return untrust(executor, targetUuid);
+		}
+		if (role == IslandRole.MEMBER) {
+			return trust(executor, targetUuid);
+		}
+		return ActionOutcome.fail(ActionReason.NOT_A_MEMBER);
+	}
+
 	// Same shape as trust()/untrust() above, but assigning/removing the ALLY role instead of
-	// TRUSTED — used by "/island ally add/remove" (see IslandRole for how ALLY differs: same
+	// CO_OWNER — used by "/island ally add/remove" (see IslandRole for how ALLY differs: same
 	// per-flag defaults as VISITOR unless the owner opens a flag for it explicitly).
 	public static ActionOutcome<Void> allyAdd(ServerPlayerEntity executor, UUID targetUuid) {
 		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
@@ -156,10 +191,13 @@ public final class MembershipService {
 	// Admin-scoped variants of trust()/untrust() above, for the Spawn admin block: they operate on
 	// an explicit island rather than resolving it from the executor's own ownership, since the
 	// operator running /island admin spawn trust/untrust never owns the Spawn island themselves.
-	// Same upsert-safe addMember/removeMember underneath, so re-trusting or untrusting a
-	// non-member is a harmless no-op, exactly like the player-facing versions.
+	// Unlike the player-facing untrust() (which only demotes CO_OWNER -> MEMBER, see above),
+	// untrustOnIsland keeps its original simpler full-removal semantics: Spawn's "authorized to
+	// build" list has no separate MEMBER tier of its own in practice, so there's nothing useful to
+	// demote into — same upsert-safe addMember/removeMember underneath, so re-trusting or
+	// untrusting a non-member is a harmless no-op either way.
 	public static void trustOnIsland(Island island, UUID targetUuid) {
-		IslandMember member = new IslandMember(targetUuid, IslandRole.TRUSTED, Instant.now(), EnumSet.noneOf(IslandPermission.class));
+		IslandMember member = new IslandMember(targetUuid, IslandRole.CO_OWNER, Instant.now(), EnumSet.noneOf(IslandPermission.class));
 		IslandCoreMod.ISLAND_REGISTRY.addMember(island.getIslandId(), member);
 	}
 
@@ -175,7 +213,7 @@ public final class MembershipService {
 
 		Island island = maybeIsland.get();
 		IslandRole role = island.getRoleOf(targetUuid);
-		if (role != IslandRole.MEMBER && role != IslandRole.TRUSTED) {
+		if (role != IslandRole.MEMBER && role != IslandRole.CO_OWNER) {
 			return ActionOutcome.fail(ActionReason.NOT_A_MEMBER);
 		}
 
@@ -198,22 +236,14 @@ public final class MembershipService {
 		return ActionOutcome.ok();
 	}
 
-	// MemberRemoveC2S (network only — see net/island/MemberRemoveC2S) covers both /island untrust
-	// and /island kick in one action, deciding which behavior applies from the target's CURRENT
-	// role: TRUSTED -> untrust()'s behavior (demotion only, no eviction — losing trusted status
-	// isn't grounds to force them out); MEMBER -> kick()'s behavior (full removal + eviction if
-	// currently on the island). This is a new judgment call for the combined network action; the
-	// two text commands are untouched and keep calling trust()/untrust()/kick() directly.
+	// MemberRemoveC2S (network only — see net/island/MemberRemoveC2S): full expulsion regardless of
+	// the target's role (MEMBER or CO_OWNER) — matches kick()'s behavior exactly, now that
+	// promoting/demoting between MEMBER and CO_OWNER has its own dedicated button/packet
+	// (MemberTrustC2S -> toggleCoOwner above). Previously this branched on role and only demoted a
+	// CO_OWNER (then TRUSTED) instead of expelling them; that responsibility moved to toggleCoOwner,
+	// so this is now a thin pass-through kept only because the client still addresses it by this
+	// packet name.
 	public static ActionOutcome<Void> removeMember(ServerPlayerEntity executor, UUID targetUuid, MinecraftServer server) {
-		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
-		if (maybeIsland.isEmpty()) {
-			return ActionOutcome.fail(ActionReason.NO_ISLAND);
-		}
-
-		IslandRole role = maybeIsland.get().getRoleOf(targetUuid);
-		if (role == IslandRole.TRUSTED) {
-			return untrust(executor, targetUuid);
-		}
 		return kick(executor, targetUuid, server);
 	}
 }

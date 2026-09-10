@@ -45,9 +45,18 @@ public class AccessControllerImpl implements AccessController {
 		return checkBlock(playerUuid, world, pos, IslandPermission.INTERACT, FlagRegistry.INTERACT, false);
 	}
 
+	// No more generic "containers" flag (retired — see FlagRegistry): checkBlock's own
+	// exception-group lookup below already resolves per concrete container type (chests, furnaces,
+	// barrels, shulker_boxes, hoppers, dispensers_droppers, each its own group with its own
+	// patterns) BEFORE ever reaching the flag fallback passed here — a matched group decides the
+	// outcome entirely on its own, with no flag involved at all. INTERACT is only reached as a
+	// fallback for a container type that matches none of those groups (a modded container, or one
+	// nobody's defined a group for yet): the same generic "can this role touch things on this
+	// island" flag canInteractBlock already uses for non-container blocks, rather than leaving such
+	// a container with no role-based protection at all.
 	@Override
 	public boolean canOpenContainer(UUID playerUuid, ServerWorld world, BlockPos pos) {
-		return checkBlock(playerUuid, world, pos, IslandPermission.CONTAINERS, FlagRegistry.CONTAINERS, false);
+		return checkBlock(playerUuid, world, pos, IslandPermission.INTERACT, FlagRegistry.INTERACT, false);
 	}
 
 	@Override
@@ -91,9 +100,10 @@ public class AccessControllerImpl implements AccessController {
 			// requireEmptyHand not met: this exception doesn't apply, fall through to the normal chain.
 		}
 
-		// BUILD_PROTECTION only ever relaxes CONSTRUCCION (placing/breaking) — INTERACT/CONTAINERS/
-		// ENTITIES keep following the flag check unconditionally, protection setting or not. A
-		// TRUSTED/OWNER member can already build regardless of this setting via FlagResolver's own
+		// BUILD_PROTECTION only ever relaxes CONSTRUCCION (placing/breaking) — INTERACT (including
+		// containers, now that "containers" isn't its own flag) and ENTITIES keep following the flag
+		// check unconditionally, protection setting or not. A
+		// CO_OWNER/OWNER member can already build regardless of this setting via FlagResolver's own
 		// role table below, so this only changes the outcome for players who'd otherwise be denied.
 		boolean isConstruccion = permission == IslandPermission.CONSTRUCCION;
 		if (isConstruccion && !island.getSetting(IslandSetting.BUILD_PROTECTION)) {

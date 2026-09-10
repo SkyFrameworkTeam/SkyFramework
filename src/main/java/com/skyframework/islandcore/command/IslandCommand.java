@@ -67,9 +67,11 @@ public class IslandCommand {
 	private static final List<String> TRISTATE_NAMES = List.of("allow", "deny", "default");
 	private static final List<String> FLAG_PRESET_NAMES = List.of("nadie", "miembros", "aliados", "todos");
 	// "/island admin flags set-default" accepts either vocabulary depending on the flag's category
-	// (ISLAND_GLOBAL -> allow/deny, ROLE_BASED -> preset) — see executeAdminFlagsSetDefault. Both are
-	// offered as suggestions since Brigadier has no way to filter them by the "flag" argument typed
-	// just before this one.
+	// (ISLAND_GLOBAL -> allow/deny, ROLE_BASED -> preset) — see executeAdminFlagsSetDefault and
+	// suggestFlagSetDefaultValues, which reads the already-typed "flag" argument to offer only the
+	// vocabulary that flag actually accepts, instead of both unconditionally. This full union is
+	// kept only as the fallback for an unrecognized/not-yet-typed flag id.
+	private static final List<String> ALLOW_DENY_NAMES = List.of("allow", "deny");
 	private static final List<String> FLAG_SET_DEFAULT_VALUE_NAMES =
 			List.of("allow", "deny", "nadie", "miembros", "aliados", "todos");
 
@@ -183,8 +185,13 @@ public class IslandCommand {
 												.then(CommandManager.argument("flag", StringArgumentType.word())
 														.suggests(IslandCommand::suggestFlagIds)
 														.then(CommandManager.argument("value", StringArgumentType.word())
-																.suggests((ctx, builder) -> CommandSource.suggestMatching(FLAG_SET_DEFAULT_VALUE_NAMES, builder))
-																.executes(IslandCommand::executeAdminFlagsSetDefault)))))
+																.suggests(IslandCommand::suggestFlagSetDefaultValues)
+																.executes(IslandCommand::executeAdminFlagsSetDefault))))
+										.then(CommandManager.literal("require")
+												.then(CommandManager.argument("flag", StringArgumentType.word())
+														.suggests(IslandCommand::suggestFlagIds)
+														.then(CommandManager.argument("permission", StringArgumentType.string())
+																.executes(IslandCommand::executeAdminFlagsRequire)))))
 								.then(CommandManager.literal("exceptions")
 										.then(CommandManager.literal("set-default")
 												.then(CommandManager.argument("group", StringArgumentType.word())
@@ -378,8 +385,8 @@ public class IslandCommand {
 			String header = flagDisplayName(flag) + ":";
 			source.sendFeedback(() -> Text.literal(header).formatted(Formatting.WHITE), false);
 
-			// 3 roles per line (OWNER/MEMBER/TRUSTED, then VISITOR/DENIED) rather than one long
-			// line: easier to scan, and each ALLOW/DENY value is colored green/red.
+			// 3 roles per line (OWNER/MEMBER/CO_OWNER, then ALLY/VISITOR/DENIED) rather than one
+			// long line: easier to scan, and each ALLOW/DENY value is colored green/red.
 			for (int i = 0; i < roles.length; i += 3) {
 				int lineEnd = Math.min(i + 3, roles.length);
 				MutableText line = Text.literal("  ");
@@ -420,13 +427,14 @@ public class IslandCommand {
 		return switch (flag.getId()) {
 			case "construccion" -> "Construcción";
 			case "interact" -> "Interactuar";
-			case "containers" -> "Contenedores";
 			case "entities" -> "Entidades";
-			case "redstone" -> "Redstone";
 			case "fire_spread" -> "Propagación de fuego";
 			case "pvp_damage" -> "Daño PvP";
 			case "mob_damage" -> "Daño de mobs";
 			case "explosion_damage" -> "Daño de explosiones";
+			case "crop_trample" -> "Pisoteo de cultivos";
+			case "natural_mob_spawning" -> "Aparición natural de mobs";
+			case "raids" -> "Incursiones (raids)";
 			default -> flag.getId();
 		};
 	}
@@ -455,6 +463,8 @@ public class IslandCommand {
 		if (!outcome.success()) {
 			if (ActionReason.NO_ISLAND.equals(outcome.reason())) {
 				source.sendError(Text.literal("No tienes ninguna isla todavía."));
+			} else if (ActionReason.MISSING_FLAG_PERMISSION.equals(outcome.reason())) {
+				source.sendError(Text.literal(missingFlagPermissionMessage(flagId)));
 			} else {
 				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus flags."));
 			}
@@ -480,6 +490,8 @@ public class IslandCommand {
 				source.sendError(Text.literal(
 						"Flag o preset inválido. Usa un flag por rol (no fire_spread/pvp_damage/mob_damage) y uno de: "
 								+ String.join(", ", FLAG_PRESET_NAMES) + "."));
+			} else if (ActionReason.MISSING_FLAG_PERMISSION.equals(outcome.reason())) {
+				source.sendError(Text.literal(missingFlagPermissionMessage(flagId)));
 			} else {
 				source.sendError(Text.literal("Solo el propietario de la isla puede cambiar sus flags."));
 			}
@@ -489,6 +501,15 @@ public class IslandCommand {
 		source.sendFeedback(() -> Text.literal(flagId + " = preset " + preset), false);
 
 		return 1;
+	}
+
+	// Shared by executeFlagsSet/executeFlagsPreset: ActionReason.MISSING_FLAG_PERMISSION alone
+	// doesn't carry which node was missing (the wire-facing ActionReason keys are static strings,
+	// no parameters), so the text-command path re-looks it up here to give a concrete message —
+	// the network path's client just sees the generic reason key, translated client-side.
+	private static String missingFlagPermissionMessage(String flagId) {
+		String node = IslandCoreMod.FLAG_PERMISSION_REQUIREMENTS.getRequiredPermission(flagId).orElse("?");
+		return "No tienes el permiso necesario para cambiar " + flagId + " (\"" + node + "\").";
 	}
 
 	// Dispatches by the flag's own category: ISLAND_GLOBAL flags (fire_spread/pvp_damage/mob_damage)
@@ -535,6 +556,26 @@ public class IslandCommand {
 		IslandCoreMod.SERVER_FLAG_DEFAULTS.setRoleBasedDefault(flagId, preset.get());
 		source.sendFeedback(() -> Text.literal(
 				"Valor por defecto del servidor para " + flagId + " = preset " + preset.get().getId()), false);
+		return 1;
+	}
+
+	private static int executeAdminFlagsRequire(CommandContext<ServerCommandSource> ctx) {
+		ServerCommandSource source = ctx.getSource();
+		String flagId = StringArgumentType.getString(ctx, "flag");
+		String permissionArg = StringArgumentType.getString(ctx, "permission");
+
+		if (FlagRegistry.get(flagId).isEmpty()) {
+			source.sendError(Text.literal("Flag desconocido: " + flagId));
+			return 0;
+		}
+
+		String node = "ninguno".equalsIgnoreCase(permissionArg) ? null : permissionArg;
+		IslandCoreMod.FLAG_PERMISSION_REQUIREMENTS.setRequiredPermission(flagId, node);
+
+		source.sendFeedback(() -> Text.literal(node == null
+				? "El flag " + flagId + " ya no requiere ningún permiso especial para cambiarlo."
+				: "El flag " + flagId + " ahora requiere el permiso \"" + node + "\" para cambiarlo."), false);
+
 		return 1;
 	}
 
@@ -712,6 +753,20 @@ public class IslandCommand {
 		return CommandSource.suggestMatching(ids, builder);
 	}
 
+	// Reads the "flag" argument already typed earlier in this same command (Brigadier resolves
+	// arguments left-to-right, so it's guaranteed parsed by the time suggestions run for "value")
+	// to offer only the vocabulary that flag's category actually accepts — allow/deny for
+	// ISLAND_GLOBAL, the 4 presets for ROLE_BASED — instead of the full union of both regardless of
+	// which flag was typed. Falls back to the full union for an unrecognized or not-yet-typed flag
+	// id, so suggestions still show something reasonable while the player is still typing "flag".
+	private static CompletableFuture<Suggestions> suggestFlagSetDefaultValues(CommandContext<ServerCommandSource> ctx, SuggestionsBuilder builder) {
+		String flagId = StringArgumentType.getString(ctx, "flag");
+		List<String> names = FlagRegistry.get(flagId)
+				.map(flag -> flag.getCategory() == FlagCategory.ISLAND_GLOBAL ? ALLOW_DENY_NAMES : FLAG_PRESET_NAMES)
+				.orElse(FLAG_SET_DEFAULT_VALUE_NAMES);
+		return CommandSource.suggestMatching(names, builder);
+	}
+
 	private static int executeDelete(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
 		ServerCommandSource source = ctx.getSource();
 		ServerPlayerEntity player = source.getPlayerOrThrow();
@@ -838,7 +893,7 @@ public class IslandCommand {
 		}
 
 		String targetName = target.getGameProfile().getName();
-		source.sendFeedback(() -> Text.literal(targetName + " ahora es de confianza en tu isla."), false);
+		source.sendFeedback(() -> Text.literal(targetName + " ahora es copropietario de tu isla."), false);
 
 		return 1;
 	}
@@ -847,15 +902,19 @@ public class IslandCommand {
 		ServerCommandSource source = ctx.getSource();
 		ServerPlayerEntity executor = source.getPlayerOrThrow();
 		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+		String targetName = target.getGameProfile().getName();
 
 		ActionOutcome<Void> outcome = MembershipService.untrust(executor, target.getUuid());
 		if (!outcome.success()) {
-			source.sendError(Text.literal("No tienes una isla."));
+			if (ActionReason.NOT_CO_OWNER.equals(outcome.reason())) {
+				source.sendError(Text.literal(targetName + " no es copropietario de tu isla."));
+			} else {
+				source.sendError(Text.literal("No tienes una isla."));
+			}
 			return 0;
 		}
 
-		String targetName = target.getGameProfile().getName();
-		source.sendFeedback(() -> Text.literal(targetName + " ya no tiene acceso especial a tu isla."), false);
+		source.sendFeedback(() -> Text.literal(targetName + " ya no es copropietario de tu isla (sigue siendo miembro)."), false);
 
 		return 1;
 	}

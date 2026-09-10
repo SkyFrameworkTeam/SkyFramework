@@ -16,7 +16,7 @@ import java.util.UUID;
  * Wire field order: {@code enabled} (the Spawn island's current BUILD_PROTECTION IslandSetting
  * value; {@code false} if the Spawn island doesn't exist yet — matches BUILD_PROTECTION's own
  * default), {@code authorizedPlayers} (list of {@link AuthorizedPlayerEntry}: the Spawn island's
- * MEMBER/TRUSTED members — the same "real members" filter {@link AdminIslandBuilder}/
+ * MEMBER/CO_OWNER members — the same "real members" filter {@link AdminIslandBuilder}/
  * {@code IslandSnapshotBuilder} already use elsewhere — who can always build there regardless of
  * {@code enabled}, empty if the Spawn island doesn't exist).
  */

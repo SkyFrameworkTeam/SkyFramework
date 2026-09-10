@@ -393,15 +393,15 @@ public class IslandData implements Island {
 				.filter(member -> member.playerUuid().equals(playerUuid))
 				.findFirst();
 
-		// An explicit DENIED/TRUSTED/MEMBER entry always wins over party-derived roles below,
-		// matching the real hierarchy documented on IslandRole (OWNER > DENIED > TRUSTED > MEMBER >
+		// An explicit DENIED/CO_OWNER/MEMBER entry always wins over party-derived roles below,
+		// matching the real hierarchy documented on IslandRole (OWNER > DENIED > CO_OWNER > MEMBER >
 		// ALLY > VISITOR): the owner's explicit block or trust decision about one specific player
 		// must never be silently overridden by that player's party membership. ALLY is deliberately
 		// the one explicit role checked AFTER the party-MEMBER lookup: party membership should
 		// upgrade an explicit ALLY entry to MEMBER, not the other way around.
 		if (explicit.isPresent()) {
 			IslandRole role = explicit.get().role();
-			if (role == IslandRole.DENIED || role == IslandRole.TRUSTED || role == IslandRole.MEMBER) {
+			if (role == IslandRole.DENIED || role == IslandRole.CO_OWNER || role == IslandRole.MEMBER) {
 				return role;
 			}
 		}
@@ -452,11 +452,13 @@ public class IslandData implements Island {
 	}
 
 	// TODO: this default permission table will become configurable in a future sprint.
+	// CO_OWNER (formerly TRUSTED) is now as hard-coded ALLOW as OWNER (see IslandRole's javadoc);
+	// MEMBER dropped its own special-cased ALLOW and now matches ALLY/VISITOR/DENIED — same rule
+	// change as FlagRegistry's compiled role-based table.
 	private static boolean defaultPermission(IslandRole role, IslandPermission permission) {
 		return switch (role) {
-			case OWNER -> true;
-			case MEMBER, TRUSTED -> permission != IslandPermission.REDSTONE;
-			case ALLY, VISITOR, DENIED -> false;
+			case OWNER, CO_OWNER -> true;
+			case MEMBER, ALLY, VISITOR, DENIED -> false;
 		};
 	}
 

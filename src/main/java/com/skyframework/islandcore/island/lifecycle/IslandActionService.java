@@ -159,12 +159,26 @@ public final class IslandActionService {
 			return ActionOutcome.fail(ActionReason.NOT_OWNER);
 		}
 
+		if (!hasRequiredFlagPermission(playerUuid, flag.getId())) {
+			return ActionOutcome.fail(ActionReason.MISSING_FLAG_PERMISSION);
+		}
+
 		if (flag.getCategory() == FlagCategory.ROLE_BASED) {
 			IslandCoreMod.ISLAND_REGISTRY.updateRoleFlagOverride(island.getIslandId(), flag.getId(), value);
 		} else {
 			IslandCoreMod.ISLAND_REGISTRY.updateGlobalFlagOverride(island.getIslandId(), flag.getId(), value);
 		}
 		return ActionOutcome.ok();
+	}
+
+	// Shared by updateFlag/applyFlagPreset above: a flag with no entry in
+	// FLAG_PERMISSION_REQUIREMENTS has no extra restriction (today's behavior unchanged); one WITH
+	// an entry requires the acting player to hold that LuckPerms node via PERMISSION_PROVIDER, same
+	// mechanism as every other permission gate in this class.
+	private static boolean hasRequiredFlagPermission(UUID playerUuid, String flagId) {
+		return IslandCoreMod.FLAG_PERMISSION_REQUIREMENTS.getRequiredPermission(flagId)
+				.map(node -> IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, node))
+				.orElse(true);
 	}
 
 	// Shared by both "/island flags preset" and FlagSetPresetC2S. flagId/preset are passed through
@@ -183,6 +197,10 @@ public final class IslandActionService {
 		Island island = maybeIsland.get();
 		if (!island.getOwnerUuid().equals(playerUuid)) {
 			return ActionOutcome.fail(ActionReason.NOT_OWNER);
+		}
+
+		if (!hasRequiredFlagPermission(playerUuid, flagId)) {
+			return ActionOutcome.fail(ActionReason.MISSING_FLAG_PERMISSION);
 		}
 
 		try {

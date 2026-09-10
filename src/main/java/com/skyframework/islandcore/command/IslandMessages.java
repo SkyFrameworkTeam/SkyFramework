@@ -139,7 +139,7 @@ public final class IslandMessages {
 		source.sendFeedback(() -> memberLineAdmin(server, island.getOwnerUuid(), IslandRole.OWNER), false);
 
 		for (IslandMember member : island.getMembers()) {
-			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED) {
+			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.CO_OWNER) {
 				continue;
 			}
 			source.sendFeedback(() -> memberLineAdmin(server, member.playerUuid(), member.role()), false);
@@ -169,7 +169,7 @@ public final class IslandMessages {
 		for (IslandMember member : island.getMembers()) {
 			// VISITOR/DENIED aren't explicit members: nothing currently stores them here, but
 			// filter defensively in case that ever changes.
-			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.TRUSTED) {
+			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.CO_OWNER) {
 				continue;
 			}
 			source.sendFeedback(() -> memberLine(server, member.playerUuid(), member.role()), false);
@@ -192,7 +192,7 @@ public final class IslandMessages {
 		return switch (role) {
 			case OWNER -> Formatting.GOLD;
 			case MEMBER -> Formatting.GREEN;
-			case TRUSTED -> Formatting.AQUA;
+			case CO_OWNER -> Formatting.AQUA;
 			case ALLY -> Formatting.YELLOW;
 			case VISITOR, DENIED -> Formatting.GRAY;
 		};

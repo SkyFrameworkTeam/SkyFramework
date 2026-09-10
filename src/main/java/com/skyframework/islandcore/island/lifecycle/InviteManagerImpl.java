@@ -40,7 +40,7 @@ public class InviteManagerImpl implements InviteManager {
 		}
 
 		IslandRole existingRole = island.getRoleOf(inviteeUuid);
-		if (existingRole == IslandRole.MEMBER || existingRole == IslandRole.TRUSTED) {
+		if (existingRole == IslandRole.MEMBER || existingRole == IslandRole.CO_OWNER) {
 			return ActionOutcome.fail(ActionReason.ALREADY_MEMBER);
 		}
 

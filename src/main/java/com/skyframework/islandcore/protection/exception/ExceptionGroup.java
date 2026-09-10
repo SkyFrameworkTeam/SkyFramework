@@ -17,7 +17,7 @@ public final class ExceptionGroup {
 	private final boolean requireEmptyHand;
 	// The "código" layer in the exception resolution chain (isla -> servidor -> código), same role
 	// Flag's own hardcoded roleDefaults table plays for flags — see ExceptionResolver. Translated
-	// to VISITOR/ALLY/MEMBER/TRUSTED values via FlagPreset#toRoleValues, exactly like every other
+	// to VISITOR/ALLY/MEMBER values via FlagPreset#toRoleValues, exactly like every other
 	// preset in this codebase.
 	private final FlagPreset defaultPreset;
 	private final boolean ownerConfigurable;

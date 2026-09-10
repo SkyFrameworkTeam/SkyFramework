@@ -46,6 +46,10 @@ public final class ActionReason {
 	// "<jugador> no es miembro de tu isla." (executeKick)
 	public static final String NOT_A_MEMBER = "not_a_member";
 
+	// "<jugador> no es copropietario de tu isla." (executeUntrust, MembershipService#untrust —
+	// untrust only demotes an existing CO_OWNER, it never applies to a plain MEMBER)
+	public static final String NOT_CO_OWNER = "not_co_owner";
+
 	// "El bioma X no existe." (executeBiome)
 	public static final String BIOME_NOT_FOUND = "biome_not_found";
 
@@ -200,6 +204,10 @@ public final class ActionReason {
 	// IllegalArgumentException: groupId isn't a registered ExceptionGroup, or preset isn't one of
 	// nadie/miembros/aliados/todos (FlagPreset#fromId) — exact mirror of INVALID_FLAG_PRESET above.
 	public static final String INVALID_EXCEPTION_PRESET = "invalid_exception_preset";
+
+	// IslandActionService#updateFlag/applyFlagPreset when FlagPermissionRequirements has a node set
+	// for this flag and the acting player doesn't hold it (PERMISSION_PROVIDER#hasPermission false).
+	public static final String MISSING_FLAG_PERMISSION = "missing_flag_permission";
 
 	// Party network block.
 

@@ -41,7 +41,7 @@ public record ExceptionGroupsStatusS2C(List<GroupEntry> groups) implements Custo
 	// Wire field order: groupId, category ("BLOCK" or "ENTITY", ExceptionGroupCategory#name()),
 	// resolvedByRole (one FlagsStatusS2C.RoleValueEntry per IslandRole, reusing that record exactly
 	// — same shape, no reason to duplicate it), currentPreset ("nadie"/"miembros"/"aliados"/"todos"
-	// if the current VISITOR/ALLY/MEMBER/TRUSTED combination exactly matches one of those presets,
+	// if the current VISITOR/ALLY/MEMBER combination exactly matches one of those presets,
 	// or "custom" if not — see ExceptionResolver#currentPreset), ownerConfigurable
 	// (ExceptionGroup#isOwnerConfigurable()).
 	public record GroupEntry(

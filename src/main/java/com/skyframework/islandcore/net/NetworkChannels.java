@@ -75,7 +75,7 @@ public final class NetworkChannels {
 	public static final Identifier SPAWN_ISLAND_SET_HOME_C2S = Identifier.of("islandcore", "spawn_island_set_home_c2s");
 
 	// Spawn island configurable build protection (BUILD_PROTECTION IslandSetting) + its
-	// always-authorized (TRUSTED/MEMBER) player list.
+	// always-authorized (CO_OWNER/MEMBER) player list.
 	public static final Identifier SPAWN_BUILD_PROTECTION_STATUS_REQUEST_C2S =
 			Identifier.of("islandcore", "spawn_build_protection_status_request_c2s");
 	public static final Identifier SPAWN_BUILD_PROTECTION_STATUS_S2C =
@@ -121,6 +121,7 @@ public final class NetworkChannels {
 	public static final Identifier ADMIN_DEFAULTS_STATUS_S2C = Identifier.of("islandcore", "admin_defaults_status_s2c");
 	public static final Identifier ADMIN_FLAG_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_flag_set_server_default_c2s");
 	public static final Identifier ADMIN_EXCEPTION_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_exception_set_server_default_c2s");
+	public static final Identifier ADMIN_FLAG_SET_REQUIREMENT_C2S = Identifier.of("islandcore", "admin_flag_set_requirement_c2s");
 
 	// Party network block: mirrors "/party" — see PartyStatusBuilder.
 

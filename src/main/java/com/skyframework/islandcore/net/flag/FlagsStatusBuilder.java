@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 // Pure assembly, mirroring IslandSnapshotBuilder/AdminIslandBuilder: every field comes from
 // FlagRegistry/FlagResolver/ExceptionGroupRegistry — the exact same calls executeFlagsList/
@@ -25,10 +26,14 @@ public final class FlagsStatusBuilder {
 	private FlagsStatusBuilder() {
 	}
 
-	public static FlagsStatusS2C buildFlagsStatus(Island island) {
+	public static FlagsStatusS2C buildFlagsStatus(Island island, UUID playerUuid) {
 		List<FlagsStatusS2C.FlagEntry> entries = new ArrayList<>();
 
 		for (Flag flag : FlagRegistry.all()) {
+			boolean missingRequiredPermission = IslandCoreMod.FLAG_PERMISSION_REQUIREMENTS.getRequiredPermission(flag.getId())
+					.map(node -> !IslandCoreMod.PERMISSION_PROVIDER.hasPermission(playerUuid, node))
+					.orElse(false);
+
 			if (flag.getCategory() == FlagCategory.ROLE_BASED) {
 				List<FlagsStatusS2C.RoleValueEntry> resolvedByRole = new ArrayList<>();
 				Map<IslandRole, Boolean> resolvedAllowByRole = new EnumMap<>(IslandRole.class);
@@ -41,22 +46,22 @@ public final class FlagsStatusBuilder {
 				// islandOverride reads MEMBER's own raw override as a representative single value —
 				// still meaningful for a flag set via "/island flags set" (applies to every role
 				// uniformly), but no longer necessarily representative once a preset (see below) has
-				// set VISITOR/ALLY/MEMBER/TRUSTED to different values; currentPreset is the accurate
-				// signal for that case.
+				// set VISITOR/ALLY/MEMBER to different values; currentPreset is the accurate signal
+				// for that case.
 				TriState islandOverride = island.getRoleFlagOverride(flag.getId(), IslandRole.MEMBER);
 
 				String currentPreset = FlagPreset.matching(
 								resolvedAllowByRole.get(IslandRole.VISITOR), resolvedAllowByRole.get(IslandRole.ALLY),
-								resolvedAllowByRole.get(IslandRole.MEMBER), resolvedAllowByRole.get(IslandRole.TRUSTED))
+								resolvedAllowByRole.get(IslandRole.MEMBER))
 						.map(FlagPreset::getId)
 						.orElse("custom");
 
 				entries.add(new FlagsStatusS2C.FlagEntry(
-						flag.getId(), flag.getCategory().name(), false, resolvedByRole, islandOverride.name(), currentPreset));
+						flag.getId(), flag.getCategory().name(), false, resolvedByRole, islandOverride.name(), currentPreset, missingRequiredPermission));
 			} else {
 				boolean resolvedValue = FlagResolver.resolveGlobal(island, flag);
 				TriState islandOverride = island.getGlobalFlagOverride(flag.getId());
-				entries.add(new FlagsStatusS2C.FlagEntry(flag.getId(), flag.getCategory().name(), resolvedValue, List.of(), islandOverride.name(), ""));
+				entries.add(new FlagsStatusS2C.FlagEntry(flag.getId(), flag.getCategory().name(), resolvedValue, List.of(), islandOverride.name(), "", missingRequiredPermission));
 			}
 		}
 

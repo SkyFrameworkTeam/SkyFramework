@@ -21,6 +21,8 @@ import java.util.UUID;
 // The island owner, as an ACTOR, always resolves ALLOW unconditionally (matches
 // IslandData.hasPermission's pre-existing "if (role == OWNER) return true" short-circuit) — separate
 // from the owner's ability to CONFIGURE flags above, which isla/servidor/código don't affect.
+// CO_OWNER (formerly TRUSTED) is the same: a hard-coded always-ALLOW role, short-circuited before
+// even the miembro layer — see IslandRole's javadoc and resolveForRole/resolveForPlayer below.
 public final class FlagResolver {
 
 	private FlagResolver() {
@@ -29,7 +31,10 @@ public final class FlagResolver {
 	// ROLE_BASED flags only.
 	public static boolean resolveForPlayer(Island island, UUID playerUuid, Flag flag) {
 		IslandRole role = island.getRoleOf(playerUuid);
-		if (role == IslandRole.OWNER) {
+		// CO_OWNER is a hard-coded always-ALLOW role, exactly as strong as OWNER (see IslandRole's
+		// javadoc) — short-circuited here too, BEFORE hasMemberOverride, so a stale per-member
+		// override can never weaken it either.
+		if (role == IslandRole.OWNER || role == IslandRole.CO_OWNER) {
 			return true;
 		}
 
@@ -44,6 +49,15 @@ public final class FlagResolver {
 	// ROLE_BASED flags only. Never returns TriState.DEFAULT: bottoms out at the flag's own
 	// hardcoded per-role default if nothing overrides it.
 	public static TriState resolveForRole(Island island, IslandRole role, Flag flag) {
+		// Hard rule, same strength as OWNER: CO_OWNER always resolves ALLOW without consulting the
+		// island override, the server default, or even the flag's own compiled table — see
+		// IslandRole's javadoc. FlagPreset deliberately never targets CO_OWNER, so nothing upstream
+		// of this method could set an override for it anyway; this short-circuit is what actually
+		// enforces that instead of just relying on the absence of one.
+		if (role == IslandRole.CO_OWNER) {
+			return TriState.ALLOW;
+		}
+
 		TriState islandOverride = island.getRoleFlagOverride(flag.getId(), role);
 		if (islandOverride != TriState.DEFAULT) {
 			return islandOverride;
@@ -62,6 +76,10 @@ public final class FlagResolver {
 	// resolve to today, given only the server default and the flag's own hardcoded table. Used by
 	// AdminDefaultsBuilder.
 	public static TriState resolveServerDefaultForRole(IslandRole role, Flag flag) {
+		if (role == IslandRole.CO_OWNER) {
+			return TriState.ALLOW;
+		}
+
 		Optional<TriState> serverDefault = IslandCoreMod.SERVER_FLAG_DEFAULTS.getRoleBasedDefault(flag.getId(), role);
 		if (serverDefault.isPresent()) {
 			return serverDefault.get();

@@ -24,18 +24,33 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
-// Loaded from config/islandcore/exception_groups.json on SERVER_STARTED. Ships with 10 example
-// groups (doors, chests, redstone, animals, crops, furnaces, mechanisms, bells, lecterns, beds),
-// all off (preset "nadie") by default, if the file doesn't exist yet. This file is the "código"
-// layer of the exception resolution chain (see
-// ExceptionResolver) — an admin edits it by hand to change a group's compiled default preset;
-// runtime tuning happens one layer up via ServerExceptionDefaults ("/island admin exceptions
-// set-default"), which is why this registry no longer exposes any in-game mutator.
+// Loaded from config/islandcore/exception_groups.json on SERVER_STARTED. Ships with 20 example
+// groups (doors, chests, animals, crops, furnaces, buttons, levers, bells, lecterns, beds,
+// barrels, shulker_boxes, hoppers, dispensers_droppers, crafting_tables, anvils,
+// enchanting_tables, jukeboxes, note_blocks, cakes), all off (preset "nadie") by default, if
+// the file doesn't exist yet — see compiledDefaults(). If the file DOES already exist (e.g. from a
+// server install predating one or more of these groups), load() also fills in any group present in
+// compiledDefaults() but missing from the file, and rewrites it — without touching any entry
+// already there, so a hand-edited group's patterns/preset/ownerConfigurable are never overwritten.
+// It also removes any RETIRED_GROUP_IDS entry unconditionally (currently "redstone"/"mechanisms",
+// both superseded by "buttons"/"levers" — see compiledDefaults()), since there's nothing
+// customizable left to preserve for an id no longer resolved against at all.
+// This file is the "código" layer of the exception resolution chain (see ExceptionResolver) — an
+// admin edits it by hand to change a group's compiled default preset; runtime tuning happens one
+// layer up via ServerExceptionDefaults ("/island admin exceptions set-default"), which is why this
+// registry no longer exposes any in-game mutator.
 public class ExceptionGroupRegistry {
 
 	private static final String CONFIG_FILE_NAME = "exception_groups.json";
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+	// "redstone" was a duplicate of "mechanisms" (both covered the same buttons/levers);
+	// "mechanisms" itself was then split into "buttons"/"levers" — see compiledDefaults(). Neither
+	// id is resolved against by ExceptionResolver anymore, so an entry under either is just inert
+	// dead weight left over from before this sprint, not something an admin could still be
+	// meaningfully customizing.
+	private static final Set<String> RETIRED_GROUP_IDS = Set.of("redstone", "mechanisms");
 
 	private final Map<String, ExceptionGroup> groupsById = new LinkedHashMap<>();
 
@@ -45,9 +60,10 @@ public class ExceptionGroupRegistry {
 
 	private void load() {
 		Path configFile = configFile();
+		List<ExceptionGroup> defaults = compiledDefaults();
 
 		if (!Files.exists(configFile)) {
-			writeDefault(configFile);
+			writeGroups(configFile, defaults);
 		}
 
 		groupsById.clear();
@@ -64,6 +80,30 @@ public class ExceptionGroupRegistry {
 			}
 		} catch (IOException | RuntimeException e) {
 			IslandCoreMod.LOGGER.error("Failed to load {}, no exception groups available", CONFIG_FILE_NAME, e);
+			// Don't attempt the merge-and-rewrite below over a file we couldn't even parse — that
+			// could clobber whatever's actually on disk with a partial/empty groupsById.
+			return;
+		}
+
+		// Retired group ids (see RETIRED_GROUP_IDS) removed unconditionally, even from a file that
+		// already existed — unlike a merely-missing group, there's no admin customization worth
+		// preserving for an id ExceptionResolver no longer resolves against at all; leaving it in
+		// would just reintroduce the exact pattern-overlap duplication this retirement fixes (e.g.
+		// "mechanisms" sitting alongside its own replacements "buttons"/"levers").
+		boolean removedRetired = groupsById.keySet().removeAll(RETIRED_GROUP_IDS);
+
+		// The file already existed (possibly from before one or more of these groups were added in
+		// a later sprint — see this class's javadoc) and is missing one or more code-registered
+		// groups: add each missing one with its compiled default and rewrite the file. Never touches
+		// an entry already present, so an admin's hand-edited pattern/preset/ownerConfigurable for an
+		// existing group is preserved exactly as-is.
+		List<ExceptionGroup> missing = defaults.stream().filter(group -> !groupsById.containsKey(group.getId())).toList();
+		if (removedRetired || !missing.isEmpty()) {
+			missing.forEach(group -> groupsById.put(group.getId(), group));
+			writeGroups(configFile, List.copyOf(groupsById.values()));
+			IslandCoreMod.LOGGER.info("Updated {}: removed retired group(s) {}, added missing default group(s) {}",
+					CONFIG_FILE_NAME, removedRetired ? RETIRED_GROUP_IDS : Set.of(),
+					missing.stream().map(ExceptionGroup::getId).toList());
 		}
 	}
 
@@ -101,20 +141,28 @@ public class ExceptionGroupRegistry {
 		return legacyDefaultEnabled ? FlagPreset.EVERYONE : FlagPreset.NOBODY;
 	}
 
-	private void writeDefault(Path configFile) {
-		// Lowercase ids (as of this sprint): easier to type in commands, and /island exceptions set
-		// now normalizes its own "group" argument to lowercase too (see IslandCommand), so this is
-		// the canonical case going forward.
-		List<ExceptionGroup> defaults = List.of(
+	// Lowercase ids (as of an earlier sprint): easier to type in commands, and /island exceptions
+	// set now normalizes its own "group" argument to lowercase too (see IslandCommand), so this is
+	// the canonical case going forward. Used both to seed a brand-new config file and, on an
+	// existing one, to fill in any group missing from it (see load()) — the single source of truth
+	// for what a group's compiled ("código") default looks like, never read directly by resolution
+	// logic (ExceptionResolver only ever reads groupsById, populated from the loaded/merged file).
+	private static List<ExceptionGroup> compiledDefaults() {
+		return List.of(
 				new ExceptionGroup("doors", ExceptionGroupCategory.BLOCK,
 						List.of("#minecraft:doors", "#minecraft:trapdoors", "#minecraft:fence_gates"),
 						true, false, false, FlagPreset.NOBODY, true),
+				// barrel/shulker_boxes deliberately NOT included here (narrowed this sprint): the
+				// dedicated "barrels"/"shulker_boxes" groups below are now the only ones responsible
+				// for those blocks — this group previously duplicated them, letting either group's
+				// preset independently unlock the same block.
 				new ExceptionGroup("chests", ExceptionGroupCategory.BLOCK,
-						List.of("minecraft:chest", "minecraft:trapped_chest", "minecraft:barrel", "#minecraft:shulker_boxes"),
+						List.of("minecraft:chest", "minecraft:trapped_chest"),
 						true, false, false, FlagPreset.NOBODY, true),
-				new ExceptionGroup("redstone", ExceptionGroupCategory.BLOCK,
-						List.of("#minecraft:buttons", "minecraft:lever"),
-						true, false, false, FlagPreset.NOBODY, true),
+				// "redstone" removed (was a duplicate of "mechanisms", both covering the same
+				// buttons/levers — see the split below) and "mechanisms" itself split into two
+				// independent groups so an owner can open buttons without also opening levers or
+				// vice versa.
 				new ExceptionGroup("animals", ExceptionGroupCategory.ENTITY,
 						List.of("minecraft:horse", "minecraft:donkey", "minecraft:mule", "minecraft:cat", "minecraft:wolf", "minecraft:parrot"),
 						true, false, false, FlagPreset.NOBODY, true),
@@ -124,8 +172,11 @@ public class ExceptionGroupRegistry {
 				new ExceptionGroup("furnaces", ExceptionGroupCategory.BLOCK,
 						List.of("minecraft:furnace", "minecraft:smoker", "minecraft:blast_furnace"),
 						true, false, false, FlagPreset.NOBODY, true),
-				new ExceptionGroup("mechanisms", ExceptionGroupCategory.BLOCK,
-						List.of("minecraft:lever", "minecraft:*_button"),
+				new ExceptionGroup("buttons", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:*_button"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("levers", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:lever"),
 						true, false, false, FlagPreset.NOBODY, true),
 				new ExceptionGroup("bells", ExceptionGroupCategory.BLOCK,
 						List.of("minecraft:bell"),
@@ -135,17 +186,54 @@ public class ExceptionGroupRegistry {
 						true, false, false, FlagPreset.NOBODY, true),
 				new ExceptionGroup("beds", ExceptionGroupCategory.BLOCK,
 						List.of("#minecraft:beds"),
+						true, false, false, FlagPreset.NOBODY, true),
+				// The 6 groups below narrow INTERACT's real footprint further (it was already only a
+				// fallback for anything not covered by a group, never a real cascade — see
+				// AccessControllerImpl's javadoc): each of these previously had no dedicated group of
+				// its own, so it fell all the way through to INTERACT despite being just as
+				// "single-purpose" a block as a door or a furnace.
+				new ExceptionGroup("crafting_tables", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:crafting_table"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("anvils", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:anvil", "minecraft:chipped_anvil", "minecraft:damaged_anvil"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("enchanting_tables", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:enchanting_table"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("jukeboxes", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:jukebox"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("note_blocks", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:note_block"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("cakes", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:cake"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("barrels", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:barrel"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("shulker_boxes", ExceptionGroupCategory.BLOCK,
+						List.of("#minecraft:shulker_boxes"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("hoppers", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:hopper"),
+						true, false, false, FlagPreset.NOBODY, true),
+				new ExceptionGroup("dispensers_droppers", ExceptionGroupCategory.BLOCK,
+						List.of("minecraft:dispenser", "minecraft:dropper"),
 						true, false, false, FlagPreset.NOBODY, true)
 		);
+	}
 
+	private static void writeGroups(Path configFile, List<ExceptionGroup> groups) {
 		JsonArray array = new JsonArray();
-		defaults.forEach(group -> array.add(toJson(group)));
+		groups.forEach(group -> array.add(toJson(group)));
 
 		try {
 			Files.createDirectories(configFile.getParent());
 			Files.writeString(configFile, GSON.toJson(array));
 		} catch (IOException e) {
-			IslandCoreMod.LOGGER.error("Failed to create default {}", CONFIG_FILE_NAME, e);
+			IslandCoreMod.LOGGER.error("Failed to write {}", CONFIG_FILE_NAME, e);
 		}
 	}
 
