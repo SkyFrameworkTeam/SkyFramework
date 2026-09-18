@@ -23,7 +23,7 @@ public final class NetworkChannels {
 	// (that would require decoding the payload before knowing whether it's safe to decode it) — a
 	// change to the handshake payloads themselves still requires shipping server and client
 	// together, the same as every codec change in this project always has.
-	public static final int PROTOCOL_VERSION = 4;
+	public static final int PROTOCOL_VERSION = 5;
 
 	public static final Identifier HANDSHAKE_C2S = Identifier.of("islandcore", "handshake_c2s");
 	public static final Identifier HANDSHAKE_S2C = Identifier.of("islandcore", "handshake_s2c");
@@ -85,6 +85,19 @@ public final class NetworkChannels {
 	public static final Identifier SPAWN_AUTHORIZED_PLAYER_ADD_C2S = Identifier.of("islandcore", "spawn_authorized_player_add_c2s");
 	public static final Identifier SPAWN_AUTHORIZED_PLAYER_REMOVE_C2S = Identifier.of("islandcore", "spawn_authorized_player_remove_c2s");
 
+	// Spawn Permisos/General (Sprint "teletransportes dinámicos" Admin Permisos/General work): the
+	// status requests reply with the SAME FlagsStatusS2C/ExceptionGroupsStatusS2C a normal island's
+	// own flags/exceptions network path already uses (both builders take an Island directly) — only
+	// the request/action payloads are new, targeting the Spawn island instead of the sender's own.
+	public static final Identifier SPAWN_FLAGS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "spawn_flags_status_request_c2s");
+	public static final Identifier SPAWN_FLAGS_STATUS_S2C = Identifier.of("islandcore", "spawn_flags_status_s2c");
+	public static final Identifier SPAWN_EXCEPTION_GROUPS_STATUS_REQUEST_C2S =
+			Identifier.of("islandcore", "spawn_exception_groups_status_request_c2s");
+	public static final Identifier SPAWN_EXCEPTION_GROUPS_STATUS_S2C = Identifier.of("islandcore", "spawn_exception_groups_status_s2c");
+	public static final Identifier SPAWN_FLAG_SET_C2S = Identifier.of("islandcore", "spawn_flag_set_c2s");
+	public static final Identifier SPAWN_FLAG_SET_PRESET_C2S = Identifier.of("islandcore", "spawn_flag_set_preset_c2s");
+	public static final Identifier SPAWN_EXCEPTION_GROUP_SET_PRESET_C2S = Identifier.of("islandcore", "spawn_exception_group_set_preset_c2s");
+
 	public static final Identifier DIMENSION_LIST_REQUEST_C2S = Identifier.of("islandcore", "dimension_list_request_c2s");
 	public static final Identifier DIMENSION_LIST_S2C = Identifier.of("islandcore", "dimension_list_s2c");
 	public static final Identifier DIMENSION_DETAIL_REQUEST_C2S = Identifier.of("islandcore", "dimension_detail_request_c2s");
@@ -121,6 +134,7 @@ public final class NetworkChannels {
 	public static final Identifier ADMIN_DEFAULTS_STATUS_REQUEST_C2S = Identifier.of("islandcore", "admin_defaults_status_request_c2s");
 	public static final Identifier ADMIN_DEFAULTS_STATUS_S2C = Identifier.of("islandcore", "admin_defaults_status_s2c");
 	public static final Identifier ADMIN_FLAG_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_flag_set_server_default_c2s");
+	public static final Identifier ADMIN_GLOBAL_FLAG_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_global_flag_set_server_default_c2s");
 	public static final Identifier ADMIN_EXCEPTION_SET_SERVER_DEFAULT_C2S = Identifier.of("islandcore", "admin_exception_set_server_default_c2s");
 	public static final Identifier ADMIN_FLAG_SET_REQUIREMENT_C2S = Identifier.of("islandcore", "admin_flag_set_requirement_c2s");
 

@@ -20,9 +20,14 @@ import java.util.List;
  * <p>Wire field order: {@code flagDefaults} (list of {@link FlagDefaultEntry}, in
  * {@code FlagRegistry.all()}'s registration order, ROLE_BASED flags only), {@code exceptionDefaults}
  * (list of {@link ExceptionDefaultEntry}, in {@code ExceptionGroupRegistry.getAllGroups()}'s
- * registration order).
+ * registration order), {@code globalDefaults} (list of {@link GlobalDefaultEntry}, in
+ * {@code FlagRegistry.all()}'s registration order, ISLAND_GLOBAL flags only — added in the
+ * "teletransportes dinámicos" sprint's Admin Permisos/General work, a client/server protocol break
+ * for IslandCoreClient's own copy of this record).
  */
-public record AdminDefaultsStatusS2C(List<FlagDefaultEntry> flagDefaults, List<ExceptionDefaultEntry> exceptionDefaults) implements CustomPayload {
+public record AdminDefaultsStatusS2C(
+		List<FlagDefaultEntry> flagDefaults, List<ExceptionDefaultEntry> exceptionDefaults, List<GlobalDefaultEntry> globalDefaults
+) implements CustomPayload {
 
 	public static final CustomPayload.Id<AdminDefaultsStatusS2C> ID =
 			new CustomPayload.Id<>(NetworkChannels.ADMIN_DEFAULTS_STATUS_S2C);
@@ -31,10 +36,13 @@ public record AdminDefaultsStatusS2C(List<FlagDefaultEntry> flagDefaults, List<E
 			PacketCodecs.collection(ArrayList::new, FlagDefaultEntry.CODEC);
 	private static final PacketCodec<RegistryByteBuf, List<ExceptionDefaultEntry>> EXCEPTION_DEFAULT_LIST_CODEC =
 			PacketCodecs.collection(ArrayList::new, ExceptionDefaultEntry.CODEC);
+	private static final PacketCodec<RegistryByteBuf, List<GlobalDefaultEntry>> GLOBAL_DEFAULT_LIST_CODEC =
+			PacketCodecs.collection(ArrayList::new, GlobalDefaultEntry.CODEC);
 
 	public static final PacketCodec<RegistryByteBuf, AdminDefaultsStatusS2C> CODEC = PacketCodec.tuple(
 			FLAG_DEFAULT_LIST_CODEC, AdminDefaultsStatusS2C::flagDefaults,
 			EXCEPTION_DEFAULT_LIST_CODEC, AdminDefaultsStatusS2C::exceptionDefaults,
+			GLOBAL_DEFAULT_LIST_CODEC, AdminDefaultsStatusS2C::globalDefaults,
 			AdminDefaultsStatusS2C::new
 	);
 
@@ -62,6 +70,18 @@ public record AdminDefaultsStatusS2C(List<FlagDefaultEntry> flagDefaults, List<E
 				PacketCodecs.STRING, ExceptionDefaultEntry::groupId,
 				PacketCodecs.STRING, ExceptionDefaultEntry::currentPreset,
 				ExceptionDefaultEntry::new
+		);
+	}
+
+	// currentValue: "allow"/"deny"/"default" (ServerFlagDefaults#getGlobalDefault's own TriState,
+	// NOT resolved through the flag's code-level default — "default" here means "no server override
+	// set", same distinction TriStateRow/ClientTriState already renders for an island's own
+	// ISLAND_GLOBAL override in SettingsScreen's "General" tab).
+	public record GlobalDefaultEntry(String flagId, String currentValue) {
+		public static final PacketCodec<RegistryByteBuf, GlobalDefaultEntry> CODEC = PacketCodec.tuple(
+				PacketCodecs.STRING, GlobalDefaultEntry::flagId,
+				PacketCodecs.STRING, GlobalDefaultEntry::currentValue,
+				GlobalDefaultEntry::new
 		);
 	}
 }

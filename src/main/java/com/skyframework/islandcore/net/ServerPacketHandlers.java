@@ -42,6 +42,13 @@ import com.skyframework.islandcore.net.admin.spawn.SpawnAuthorizedPlayerRemoveC2
 import com.skyframework.islandcore.net.admin.spawn.SpawnBuildProtectionSetC2S;
 import com.skyframework.islandcore.net.admin.spawn.SpawnBuildProtectionStatusRequestC2S;
 import com.skyframework.islandcore.net.admin.spawn.SpawnBuildProtectionStatusS2C;
+import com.skyframework.islandcore.net.admin.spawn.SpawnExceptionGroupSetPresetC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnExceptionGroupsStatusRequestC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnExceptionGroupsStatusS2C;
+import com.skyframework.islandcore.net.admin.spawn.SpawnFlagSetC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnFlagSetPresetC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnFlagsStatusRequestC2S;
+import com.skyframework.islandcore.net.admin.spawn.SpawnFlagsStatusS2C;
 import com.skyframework.islandcore.net.admin.spawn.SpawnIslandCreateC2S;
 import com.skyframework.islandcore.net.admin.spawn.SpawnIslandResizeC2S;
 import com.skyframework.islandcore.net.admin.spawn.SpawnIslandSetHomeC2S;
@@ -61,6 +68,7 @@ import com.skyframework.islandcore.net.admin.defaults.AdminDefaultsStatusS2C;
 import com.skyframework.islandcore.net.admin.defaults.AdminExceptionSetServerDefaultC2S;
 import com.skyframework.islandcore.net.admin.defaults.AdminFlagSetRequirementC2S;
 import com.skyframework.islandcore.net.admin.defaults.AdminFlagSetServerDefaultC2S;
+import com.skyframework.islandcore.net.admin.defaults.AdminGlobalFlagSetServerDefaultC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupSetPresetC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusRequestC2S;
 import com.skyframework.islandcore.net.flag.ExceptionGroupsStatusS2C;
@@ -239,6 +247,7 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playC2S().register(AdminDefaultsStatusRequestC2S.ID, AdminDefaultsStatusRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(AdminDefaultsStatusS2C.ID, AdminDefaultsStatusS2C.CODEC);
 		PayloadTypeRegistry.playC2S().register(AdminFlagSetServerDefaultC2S.ID, AdminFlagSetServerDefaultC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(AdminGlobalFlagSetServerDefaultC2S.ID, AdminGlobalFlagSetServerDefaultC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(AdminExceptionSetServerDefaultC2S.ID, AdminExceptionSetServerDefaultC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(AdminFlagSetRequirementC2S.ID, AdminFlagSetRequirementC2S.CODEC);
 
@@ -275,6 +284,13 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playC2S().register(SpawnBuildProtectionSetC2S.ID, SpawnBuildProtectionSetC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(SpawnAuthorizedPlayerAddC2S.ID, SpawnAuthorizedPlayerAddC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(SpawnAuthorizedPlayerRemoveC2S.ID, SpawnAuthorizedPlayerRemoveC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnFlagsStatusRequestC2S.ID, SpawnFlagsStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(SpawnFlagsStatusS2C.ID, SpawnFlagsStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnExceptionGroupsStatusRequestC2S.ID, SpawnExceptionGroupsStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(SpawnExceptionGroupsStatusS2C.ID, SpawnExceptionGroupsStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnFlagSetC2S.ID, SpawnFlagSetC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnFlagSetPresetC2S.ID, SpawnFlagSetPresetC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(SpawnExceptionGroupSetPresetC2S.ID, SpawnExceptionGroupSetPresetC2S.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(DimensionListRequestC2S.ID, DimensionListRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(DimensionListS2C.ID, DimensionListS2C.CODEC);
@@ -546,6 +562,31 @@ public final class ServerPacketHandlers {
 			}
 
 			IslandCoreMod.SERVER_FLAG_DEFAULTS.setRoleBasedDefault(payload.flagId(), preset.get());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(AdminGlobalFlagSetServerDefaultC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Flag> maybeFlag = FlagRegistry.get(payload.flagId());
+			if (maybeFlag.isEmpty() || maybeFlag.get().getCategory() != FlagCategory.ISLAND_GLOBAL) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_VALUE));
+				return;
+			}
+
+			TriState value;
+			try {
+				value = TriState.valueOf(payload.value().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_VALUE));
+				return;
+			}
+
+			// Same entry point "/island admin flags set-default <flag> allow|deny|default" calls.
+			IslandCoreMod.SERVER_FLAG_DEFAULTS.setGlobalDefault(payload.flagId(), value);
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
@@ -1035,6 +1076,128 @@ public final class ServerPacketHandlers {
 
 			IslandCoreMod.ISLAND_REGISTRY.updateIslandSetting(
 					maybeIsland.get().getIslandId(), IslandSetting.BUILD_PROTECTION, payload.enabled());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		// Spawn Permisos/General: same FlagsStatusS2C/ExceptionGroupsStatusS2C a normal island's own
+		// flags/exceptions network path replies with (see this section's NetworkChannels comment) —
+		// only the request/action payloads below are new.
+		registerGuarded(SpawnFlagsStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			FlagsStatusS2C status = FlagsStatusBuilder.buildFlagsStatus(maybeIsland.get(), player.getUuid());
+			ServerPlayNetworking.send(player, new SpawnFlagsStatusS2C(status.flags()));
+		});
+
+		registerGuarded(SpawnExceptionGroupsStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			ExceptionGroupsStatusS2C status = FlagsStatusBuilder.buildExceptionGroupsStatus(maybeIsland.get());
+			ServerPlayNetworking.send(player, new SpawnExceptionGroupsStatusS2C(status.groups()));
+		});
+
+		registerGuarded(SpawnFlagSetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			Optional<Flag> maybeFlag = FlagRegistry.get(payload.flagId());
+			if (maybeFlag.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.FLAG_NOT_FOUND));
+				return;
+			}
+
+			TriState value;
+			try {
+				value = TriState.valueOf(payload.value().toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_VALUE));
+				return;
+			}
+
+			Flag flag = maybeFlag.get();
+			UUID spawnIslandId = maybeIsland.get().getIslandId();
+			if (flag.getCategory() == FlagCategory.ROLE_BASED) {
+				IslandCoreMod.ISLAND_REGISTRY.updateRoleFlagOverride(spawnIslandId, flag.getId(), value);
+			} else {
+				IslandCoreMod.ISLAND_REGISTRY.updateGlobalFlagOverride(spawnIslandId, flag.getId(), value);
+			}
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(SpawnFlagSetPresetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			try {
+				IslandCoreMod.ISLAND_REGISTRY.applyFlagPreset(maybeIsland.get().getIslandId(), payload.flagId(), payload.preset());
+			} catch (IllegalArgumentException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_FLAG_PRESET));
+				return;
+			}
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
+
+		registerGuarded(SpawnExceptionGroupSetPresetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			if (rejectIfNotOperator(player)) {
+				return;
+			}
+
+			Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(Island.SERVER_OWNER_UUID);
+			if (maybeIsland.isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.SPAWN_ISLAND_NOT_FOUND));
+				return;
+			}
+
+			if (IslandCoreMod.EXCEPTION_GROUP_REGISTRY.getGroup(payload.groupId()).isEmpty()) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.EXCEPTION_GROUP_NOT_FOUND));
+				return;
+			}
+
+			// Same entry point "/island admin spawn exceptions preset" (executeAdminSpawnExceptionsPreset)
+			// calls — unlike a normal island's own ExceptionGroupSetPresetC2S, isOwnerConfigurable is
+			// deliberately NOT checked here: that flag restricts a normal island OWNER from touching a
+			// server-managed group, not an operator configuring the Spawn island's own defaults.
+			try {
+				IslandCoreMod.ISLAND_REGISTRY.applyExceptionGroupPreset(maybeIsland.get().getIslandId(), payload.groupId(), payload.preset());
+			} catch (IllegalArgumentException e) {
+				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.INVALID_EXCEPTION_PRESET));
+				return;
+			}
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 

@@ -9,9 +9,11 @@ import com.skyframework.islandcore.protection.flag.FlagCategory;
 import com.skyframework.islandcore.protection.flag.FlagPreset;
 import com.skyframework.islandcore.protection.flag.FlagRegistry;
 import com.skyframework.islandcore.protection.flag.FlagResolver;
+import com.skyframework.islandcore.protection.flag.TriState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 // Pure assembly, mirroring FlagsStatusBuilder: every field comes from
 // FlagResolver#resolveServerDefaultForRole / ExceptionResolver#isEnabledForRoleServerDefault — the
@@ -47,6 +49,16 @@ public final class AdminDefaultsBuilder {
 			exceptionDefaults.add(new AdminDefaultsStatusS2C.ExceptionDefaultEntry(group.getId(), currentPreset));
 		}
 
-		return new AdminDefaultsStatusS2C(flagDefaults, exceptionDefaults);
+		List<AdminDefaultsStatusS2C.GlobalDefaultEntry> globalDefaults = new ArrayList<>();
+		for (Flag flag : FlagRegistry.all()) {
+			if (flag.getCategory() != FlagCategory.ISLAND_GLOBAL) {
+				continue;
+			}
+
+			TriState currentValue = IslandCoreMod.SERVER_FLAG_DEFAULTS.getGlobalDefault(flag.getId()).orElse(TriState.DEFAULT);
+			globalDefaults.add(new AdminDefaultsStatusS2C.GlobalDefaultEntry(flag.getId(), currentValue.name().toLowerCase(Locale.ROOT)));
+		}
+
+		return new AdminDefaultsStatusS2C(flagDefaults, exceptionDefaults, globalDefaults);
 	}
 }
