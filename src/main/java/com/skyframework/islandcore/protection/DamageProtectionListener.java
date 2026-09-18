@@ -15,6 +15,7 @@ import net.minecraft.util.Identifier;
 import net.minecraft.world.World;
 
 import java.util.Optional;
+import java.util.UUID;
 
 // Called from IslandCoreMod's second ServerLivingEntityEvents.ALLOW_DAMAGE listener.
 //
@@ -46,13 +47,25 @@ public final class DamageProtectionListener {
 			return true;
 		}
 
+		Island island = maybeIsland.get();
+
 		Entity attacker = source.getAttacker();
 		if (attacker == null) {
-			// No attacker: fall damage, lava, drowning, starvation, etc. Not part of this system.
+			// DamageSources.magic() (used by periodic harmful-status-effect ticks, e.g. poison from a
+			// thrown potion) carries no attacker at all, unlike an instant potion effect's
+			// indirectMagic() — see StatusEffectSourceTracker's class doc for the full picture. Check
+			// the tracker before falling back to "no attacker, not part of this system" so PVP_DAMAGE
+			// still blocks this the same way it blocks a direct hit.
+			if (victim instanceof PlayerEntity) {
+				Optional<UUID> hostileEffectAttacker = StatusEffectSourceTracker.getHostileEffectSource(victim.getUuid());
+				if (hostileEffectAttacker.isPresent()) {
+					return FlagResolver.resolveGlobal(island, FlagRegistry.PVP_DAMAGE);
+				}
+			}
+			// No attacker and no tracked hostile-effect source: fall damage, lava, drowning,
+			// starvation, etc. Not part of this system.
 			return true;
 		}
-
-		Island island = maybeIsland.get();
 
 		if (attacker instanceof PlayerEntity && victim instanceof PlayerEntity) {
 			// PVP is symmetric: no ENTITIES bypass here, not even for the owner — see class javadoc.
