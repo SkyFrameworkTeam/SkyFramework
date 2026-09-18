@@ -77,6 +77,16 @@ public class InviteManagerImpl implements InviteManager {
 	}
 
 	@Override
+	public Optional<Island> declineInvite(UUID inviteeUuid) {
+		PendingInvite invite = pendingInvites.remove(inviteeUuid);
+		if (invite == null || Instant.now().isAfter(invite.expiresAt())) {
+			return Optional.empty();
+		}
+
+		return IslandCoreMod.ISLAND_REGISTRY.getIsland(invite.islandId());
+	}
+
+	@Override
 	public Optional<PendingInvite> getPendingInvite(UUID invitedUuid) {
 		PendingInvite invite = pendingInvites.get(invitedUuid);
 		if (invite == null || Instant.now().isAfter(invite.expiresAt())) {

@@ -100,6 +100,26 @@ public final class MembershipService {
 		return ActionOutcome.ok(island);
 	}
 
+	// Unlike acceptInvite, there's no membership change to roll back — just consumes the pending
+	// invite server-side so "Ignorar" on the client is permanent instead of the banner reappearing
+	// on the next snapshot refresh (the invite used to only be hidden locally, with the server-side
+	// entry still alive until its own 5-minute timeout).
+	public static ActionOutcome<Void> declineInvite(ServerPlayerEntity player, MinecraftServer server) {
+		Optional<Island> maybeIsland = IslandCoreMod.INVITE_MANAGER.declineInvite(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.NO_PENDING_INVITE);
+		}
+
+		Island island = maybeIsland.get();
+		ServerPlayerEntity owner = server.getPlayerManager().getPlayer(island.getOwnerUuid());
+		if (owner != null) {
+			owner.sendMessage(Text.literal(
+					player.getGameProfile().getName() + " ha rechazado tu invitación."), false);
+		}
+
+		return ActionOutcome.ok();
+	}
+
 	// Promotes to CO_OWNER unconditionally: whether targetUuid was already a plain MEMBER or not a
 	// member at all, they end up CO_OWNER — addMember's upsert-by-playerUuid handles both cases the
 	// same way, no invitation/acceptance needed (matches trust's historical no-invite behavior).

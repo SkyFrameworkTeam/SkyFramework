@@ -19,6 +19,11 @@ public interface InviteManager {
 	// adding them as a MEMBER in the process. Empty if there was none (or it expired).
 	Optional<Island> acceptInvite(UUID inviteeUuid);
 
+	// Consumes (without accepting) the pending, non-expired invite for inviteeUuid, so it stops
+	// reappearing on the client and can't be accepted later. Returns the island it was for, or
+	// empty if there was none (or it already expired) — same shape as acceptInvite.
+	Optional<Island> declineInvite(UUID inviteeUuid);
+
 	// Read-only lookup, doesn't consume the invite (unlike acceptInvite). Empty if there is none
 	// pending for invitedUuid, or it already expired. Used by IslandSnapshotBuilder to populate
 	// the incoming-invite banner on the client without needing /island accept first.

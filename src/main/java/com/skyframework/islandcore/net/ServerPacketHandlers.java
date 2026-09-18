@@ -83,6 +83,7 @@ import com.skyframework.islandcore.net.island.IslandUpgradeC2S;
 import com.skyframework.islandcore.net.member.MemberAllyAddC2S;
 import com.skyframework.islandcore.net.member.MemberAllyRemoveC2S;
 import com.skyframework.islandcore.net.member.MemberInviteAcceptC2S;
+import com.skyframework.islandcore.net.member.MemberInviteDeclineC2S;
 import com.skyframework.islandcore.net.member.MemberInviteC2S;
 import com.skyframework.islandcore.net.member.MemberRemoveC2S;
 import com.skyframework.islandcore.net.member.MemberTrustC2S;
@@ -214,6 +215,7 @@ public final class ServerPacketHandlers {
 
 		PayloadTypeRegistry.playC2S().register(MemberInviteC2S.ID, MemberInviteC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(MemberInviteAcceptC2S.ID, MemberInviteAcceptC2S.CODEC);
+		PayloadTypeRegistry.playC2S().register(MemberInviteDeclineC2S.ID, MemberInviteDeclineC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(MemberTrustC2S.ID, MemberTrustC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(MemberRemoveC2S.ID, MemberRemoveC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(MemberAllyAddC2S.ID, MemberAllyAddC2S.CODEC);
@@ -354,6 +356,12 @@ public final class ServerPacketHandlers {
 		registerGuarded(MemberInviteAcceptC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
 			ActionOutcome<?> outcome = MembershipService.acceptInvite(player, context.server());
+			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
+		});
+
+		registerGuarded(MemberInviteDeclineC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			ActionOutcome<?> outcome = MembershipService.declineInvite(player, context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
