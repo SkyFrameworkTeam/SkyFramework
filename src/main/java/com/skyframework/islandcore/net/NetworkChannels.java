@@ -23,7 +23,7 @@ public final class NetworkChannels {
 	// (that would require decoding the payload before knowing whether it's safe to decode it) — a
 	// change to the handshake payloads themselves still requires shipping server and client
 	// together, the same as every codec change in this project always has.
-	public static final int PROTOCOL_VERSION = 5;
+	public static final int PROTOCOL_VERSION = 6;
 
 	public static final Identifier HANDSHAKE_C2S = Identifier.of("islandcore", "handshake_c2s");
 	public static final Identifier HANDSHAKE_S2C = Identifier.of("islandcore", "handshake_s2c");

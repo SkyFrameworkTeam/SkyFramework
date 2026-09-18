@@ -2,9 +2,13 @@ package com.skyframework.islandcore.net.teleport;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.network.ActionReason;
+import com.skyframework.islandcore.dimension.model.DimensionDefinition;
+import com.skyframework.islandcore.dimension.model.DimensionState;
 
 import net.minecraft.server.network.ServerPlayerEntity;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 public final class TeleportStatusBuilder {
@@ -27,13 +31,34 @@ public final class TeleportStatusBuilder {
 				? TeleportStatusS2C.StatusEntry.available(IslandCoreMod.TELEPORT_MANAGER.getSpawnCooldownRemainingSeconds(playerUuid))
 				: TeleportStatusS2C.StatusEntry.unavailable(ActionReason.SPAWN_DISABLED);
 
-		TeleportStatusS2C.StatusEntry farming = IslandCoreMod.FARMING_CONFIG.isEnabled()
-				? TeleportStatusS2C.StatusEntry.available(IslandCoreMod.TELEPORT_MANAGER.getFarmingCooldownRemainingSeconds(playerUuid))
-				: TeleportStatusS2C.StatusEntry.unavailable(ActionReason.FARMING_DISABLED);
-
 		TeleportStatusS2C.StatusEntry rtp = buildRtpStatus(player, playerUuid);
 
-		return new TeleportStatusS2C(home, spawn, rtp, farming);
+		return new TeleportStatusS2C(home, spawn, rtp, buildDimensionEntries(playerUuid));
+	}
+
+	// One entry per ACTIVE DIMENSION_REGISTRY dimension (a REGENERATING/DELETING one is mid-flight,
+	// not something to offer a teleport into right now). The entry matching FarmingConfig's own
+	// target keeps mirroring that config's enabled flag/cooldown — see TeleportManager's javadoc on
+	// requestDimensionTeleport; every other dimension is always enabled with no cooldown.
+	private static List<TeleportStatusS2C.DimensionTeleportEntry> buildDimensionEntries(UUID playerUuid) {
+		List<TeleportStatusS2C.DimensionTeleportEntry> entries = new ArrayList<>();
+
+		for (DimensionDefinition dimension : IslandCoreMod.DIMENSION_REGISTRY.getAllDimensions()) {
+			if (dimension.getState() != DimensionState.ACTIVE) {
+				continue;
+			}
+
+			boolean isFarmingTarget = dimension.getId().equals(IslandCoreMod.FARMING_CONFIG.getTargetDimension());
+			boolean enabled = !isFarmingTarget || IslandCoreMod.FARMING_CONFIG.isEnabled();
+			long cooldownRemainingSeconds = enabled
+					? IslandCoreMod.TELEPORT_MANAGER.getDimensionCooldownRemainingSeconds(playerUuid, dimension.getId())
+					: 0;
+
+			entries.add(new TeleportStatusS2C.DimensionTeleportEntry(
+					dimension.getId().toString(), dimension.getDisplayName(), enabled, cooldownRemainingSeconds));
+		}
+
+		return entries;
 	}
 
 	private static TeleportStatusS2C.StatusEntry buildRtpStatus(ServerPlayerEntity player, UUID playerUuid) {

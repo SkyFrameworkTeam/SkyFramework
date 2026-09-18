@@ -421,7 +421,7 @@ public final class ServerPacketHandlers {
 	private static void registerTeleportHandlers() {
 		registerGuarded(TeleportRequestC2S.ID, (payload, context) -> {
 			ServerPlayerEntity player = context.player();
-			ActionOutcome<?> outcome = dispatchTeleportRequest(player, payload.type(), context.server());
+			ActionOutcome<?> outcome = dispatchTeleportRequest(player, payload, context.server());
 			ServerPlayNetworking.send(player, ActionResultS2C.fromOutcome(outcome));
 		});
 
@@ -431,20 +431,39 @@ public final class ServerPacketHandlers {
 		});
 	}
 
-	// SPAWN/FARMING replicate the enabled-check SpawnCommand/FarmingCommand already do before
+	// SPAWN/DIMENSION replicate the enabled-check SpawnCommand/FarmingCommand already do before
 	// calling TeleportManager — that check lives in the text command today, not in
 	// TeleportManagerImpl, so it must be repeated here for the network path to behave the same way.
-	private static ActionOutcome<?> dispatchTeleportRequest(ServerPlayerEntity player, TeleportRequestC2S.Type type, MinecraftServer server) {
-		return switch (type) {
+	// DIMENSION only re-does it for FARMING_DISABLED, and only when the requested id happens to be
+	// FarmingConfig's own target — every other dimension has no such config-level toggle.
+	private static ActionOutcome<?> dispatchTeleportRequest(ServerPlayerEntity player, TeleportRequestC2S payload, MinecraftServer server) {
+		return switch (payload.type()) {
 			case HOME -> IslandCoreMod.TELEPORT_MANAGER.requestHome(player);
 			case SPAWN -> IslandCoreMod.SPAWN_CONFIG.isEnabled()
 					? IslandCoreMod.TELEPORT_MANAGER.requestSpawn(player)
 					: ActionOutcome.fail(ActionReason.SPAWN_DISABLED);
-			case FARMING -> IslandCoreMod.FARMING_CONFIG.isEnabled()
-					? IslandCoreMod.TELEPORT_MANAGER.requestFarming(player)
-					: ActionOutcome.fail(ActionReason.FARMING_DISABLED);
 			case RTP -> IslandCoreMod.TELEPORT_MANAGER.requestRtp(player);
+			case DIMENSION -> dispatchDimensionTeleport(player, payload.dimensionId());
 		};
+	}
+
+	private static ActionOutcome<?> dispatchDimensionTeleport(ServerPlayerEntity player, Optional<String> dimensionIdString) {
+		if (dimensionIdString.isEmpty()) {
+			return ActionOutcome.fail(ActionReason.DIMENSION_UNAVAILABLE);
+		}
+
+		Identifier dimensionId;
+		try {
+			dimensionId = Identifier.of(dimensionIdString.get());
+		} catch (RuntimeException e) {
+			return ActionOutcome.fail(ActionReason.DIMENSION_UNAVAILABLE);
+		}
+
+		if (dimensionId.equals(IslandCoreMod.FARMING_CONFIG.getTargetDimension()) && !IslandCoreMod.FARMING_CONFIG.isEnabled()) {
+			return ActionOutcome.fail(ActionReason.FARMING_DISABLED);
+		}
+
+		return IslandCoreMod.TELEPORT_MANAGER.requestDimensionTeleport(player, dimensionId);
 	}
 
 	private static void registerBiomeTierHandlers() {

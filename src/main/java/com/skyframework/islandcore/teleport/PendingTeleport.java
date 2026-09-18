@@ -14,7 +14,11 @@ class PendingTeleport {
 	enum Kind {
 		HOME,
 		SPAWN,
-		FARMING
+		FARMING,
+		// Any DIMENSION_REGISTRY dimension reached through the dynamic teleports section, other
+		// than the one matching FarmingConfig's own target (that one still uses Kind.FARMING — see
+		// TeleportManagerImpl#requestDimensionTeleport).
+		DIMENSION
 	}
 
 	final UUID playerUuid;

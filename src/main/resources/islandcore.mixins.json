@@ -10,6 +10,7 @@
 		"LightningFireMixin",
 		"LivingEntityStatusEffectSourceMixin",
 		"PistonHandlerMixin",
+		"PlayerLastPositionMixin",
 		"PortalDestinationMixin",
 		"PortalIgnitionMixin",
 		"RaidManagerMixin",
