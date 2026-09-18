@@ -56,13 +56,6 @@ public class PartyCommand {
 										.executes(PartyCommand::executeDisbandConfirm)))
 						.then(CommandManager.literal("info")
 								.executes(PartyCommand::executeInfo))
-						.then(CommandManager.literal("ally")
-								.then(CommandManager.literal("add")
-										.then(CommandManager.argument("party", StringArgumentType.word())
-												.executes(PartyCommand::executeAllyAdd)))
-								.then(CommandManager.literal("remove")
-										.then(CommandManager.argument("party", StringArgumentType.word())
-												.executes(PartyCommand::executeAllyRemove))))
 				)
 		);
 	}
@@ -297,69 +290,6 @@ public class PartyCommand {
 			source.sendFeedback(() -> Text.literal("- " + name + (isLeader ? " (líder)" : "")), false);
 		}
 
-		if (party.getAlliedPartyIds().isEmpty()) {
-			source.sendFeedback(() -> Text.literal("Parties aliadas: ninguna").formatted(Formatting.GRAY), false);
-		} else {
-			source.sendFeedback(() -> Text.literal("Parties aliadas:").formatted(Formatting.BOLD, Formatting.YELLOW), false);
-			for (UUID alliedPartyId : party.getAlliedPartyIds()) {
-				String alliedName = IslandCoreMod.PARTY_REGISTRY.getParty(alliedPartyId)
-						.map(PartyData::getName)
-						.orElse("(party eliminada)");
-				source.sendFeedback(() -> Text.literal("- " + alliedName), false);
-			}
-		}
-
-		return 1;
-	}
-
-	private static int executeAllyAdd(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
-		ServerCommandSource source = ctx.getSource();
-		ServerPlayerEntity player = source.getPlayerOrThrow();
-		String targetName = StringArgumentType.getString(ctx, "party");
-
-		Optional<PartyData> maybeParty = requireLeaderOf(source, player.getUuid());
-		if (maybeParty.isEmpty()) {
-			return 0;
-		}
-		PartyData party = maybeParty.get();
-
-		Optional<PartyData> maybeTarget = IslandCoreMod.PARTY_REGISTRY.getPartyByName(targetName);
-		if (maybeTarget.isEmpty()) {
-			source.sendError(Text.literal("No existe ninguna party con el nombre \"" + targetName + "\"."));
-			return 0;
-		}
-		PartyData target = maybeTarget.get();
-
-		if (target.getPartyId().equals(party.getPartyId())) {
-			source.sendError(Text.literal("Tu party no puede aliarse consigo misma."));
-			return 0;
-		}
-
-		IslandCoreMod.PARTY_REGISTRY.addAlly(party.getPartyId(), target.getPartyId());
-		source.sendFeedback(() -> Text.literal("\"" + target.getName() + "\" ahora es aliada de tu party."), false);
-		return 1;
-	}
-
-	private static int executeAllyRemove(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
-		ServerCommandSource source = ctx.getSource();
-		ServerPlayerEntity player = source.getPlayerOrThrow();
-		String targetName = StringArgumentType.getString(ctx, "party");
-
-		Optional<PartyData> maybeParty = requireLeaderOf(source, player.getUuid());
-		if (maybeParty.isEmpty()) {
-			return 0;
-		}
-		PartyData party = maybeParty.get();
-
-		Optional<PartyData> maybeTarget = IslandCoreMod.PARTY_REGISTRY.getPartyByName(targetName);
-		if (maybeTarget.isEmpty()) {
-			source.sendError(Text.literal("No existe ninguna party con el nombre \"" + targetName + "\"."));
-			return 0;
-		}
-		PartyData target = maybeTarget.get();
-
-		IslandCoreMod.PARTY_REGISTRY.removeAlly(party.getPartyId(), target.getPartyId());
-		source.sendFeedback(() -> Text.literal("\"" + target.getName() + "\" ya no es aliada de tu party."), false);
 		return 1;
 	}
 

@@ -19,10 +19,6 @@ public class PartyData {
 	// leader when the current leader leaves a party that still has other members.
 	private final Set<UUID> members = new LinkedHashSet<>();
 
-	// Unidirectional: a party declaring another as an ally doesn't require that party to accept
-	// anything back. Two mutually-allying parties simply both call "ally add" on each other.
-	private final Set<UUID> alliedPartyIds = new LinkedHashSet<>();
-
 	private final Instant createdAt;
 	private Instant updatedAt;
 
@@ -36,13 +32,12 @@ public class PartyData {
 	}
 
 	// Reconstruction constructor used when loading persisted parties from storage: unlike the
-	// primary constructor, updatedAt/members/alliedPartyIds are not freshly initialized but restored as-is.
+	// primary constructor, updatedAt/members are not freshly initialized but restored as-is.
 	public PartyData(
 			UUID partyId,
 			String name,
 			UUID leaderUuid,
 			Collection<UUID> members,
-			Collection<UUID> alliedPartyIds,
 			Instant createdAt,
 			Instant updatedAt
 	) {
@@ -50,7 +45,6 @@ public class PartyData {
 		this.name = name;
 		this.leaderUuid = leaderUuid;
 		this.members.addAll(members);
-		this.alliedPartyIds.addAll(alliedPartyIds);
 		this.createdAt = createdAt;
 		this.updatedAt = updatedAt;
 	}
@@ -88,20 +82,6 @@ public class PartyData {
 
 	public void removeMember(UUID playerUuid) {
 		members.remove(playerUuid);
-		touch();
-	}
-
-	public Set<UUID> getAlliedPartyIds() {
-		return Collections.unmodifiableSet(alliedPartyIds);
-	}
-
-	public void addAlly(UUID targetPartyId) {
-		alliedPartyIds.add(targetPartyId);
-		touch();
-	}
-
-	public void removeAlly(UUID targetPartyId) {
-		alliedPartyIds.remove(targetPartyId);
 		touch();
 	}
 

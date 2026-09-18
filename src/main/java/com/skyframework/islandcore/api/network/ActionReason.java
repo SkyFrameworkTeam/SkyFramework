@@ -223,17 +223,13 @@ public final class ActionReason {
 	// PartyAllyRemoveC2S when the sender isn't in any party (PartyRegistry#getPartyOf empty).
 	public static final String NO_PARTY = "no_party";
 
-	// PartyKickC2S/PartyRenameC2S/PartyDisbandRequestC2S/PartyAllyAddC2S/PartyAllyRemoveC2S when
-	// the sender is in a party but isn't its leader — mirrors PartyCommand#requireLeaderOf.
+	// PartyKickC2S/PartyRenameC2S/PartyDisbandRequestC2S when the sender is in a party but isn't its
+	// leader — mirrors PartyCommand#requireLeaderOf.
 	public static final String NOT_PARTY_LEADER = "not_party_leader";
 
 	// PartyAcceptC2S when there's no pending party invite for the sender, or it already expired
 	// (PartyInviteManager#acceptInvite empty).
 	public static final String NO_PENDING_PARTY_INVITE = "no_pending_party_invite";
-
-	// PartyAllyAddC2S/PartyAllyRemoveC2S when targetPartyName doesn't match any party
-	// (PartyRegistry#getPartyByName empty).
-	public static final String PARTY_NOT_FOUND = "party_not_found";
 
 	// PartyKickC2S when targetUuid is the sender's own uuid (use PartyLeaveC2S/disband instead).
 	public static final String CANNOT_KICK_SELF = "cannot_kick_self";
@@ -241,13 +237,15 @@ public final class ActionReason {
 	// PartyKickC2S when targetUuid isn't a member of the sender's party.
 	public static final String NOT_A_PARTY_MEMBER = "not_a_party_member";
 
-	// PartyAllyAddC2S when targetPartyName resolves to the sender's own party.
-	public static final String PARTY_ALLY_SELF = "party_ally_self";
-
 	// PartyDisbandConfirmC2S when there's no pending disband request for the sender's party, or it
 	// already expired (PartyDisbandRequests#confirm false) — mirrors PartyCommand's own "/party
 	// disband" (request) step must run first.
 	public static final String NO_PENDING_PARTY_DISBAND = "no_pending_party_disband";
+
+	// AllianceAddC2S/"/island alliance add" (MembershipService#allyAdd) when targetUuid is the
+	// sender's own uuid — adding yourself as your own island's ally makes no sense (the owner check
+	// in IslandData#getRoleOf already short-circuits before ever consulting members anyway).
+	public static final String ALLIANCE_SELF = "alliance_self";
 
 	private ActionReason() {
 	}

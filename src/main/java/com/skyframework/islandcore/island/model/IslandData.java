@@ -393,12 +393,15 @@ public class IslandData implements Island {
 				.filter(member -> member.playerUuid().equals(playerUuid))
 				.findFirst();
 
-		// An explicit DENIED/CO_OWNER/MEMBER entry always wins over party-derived roles below,
-		// matching the real hierarchy documented on IslandRole (OWNER > DENIED > CO_OWNER > MEMBER >
-		// ALLY > VISITOR): the owner's explicit block or trust decision about one specific player
-		// must never be silently overridden by that player's party membership. ALLY is deliberately
-		// the one explicit role checked AFTER the party-MEMBER lookup: party membership should
-		// upgrade an explicit ALLY entry to MEMBER, not the other way around.
+		// An explicit DENIED/CO_OWNER/MEMBER entry always wins over the party-derived MEMBER check
+		// below, matching the real hierarchy documented on IslandRole (OWNER > DENIED > CO_OWNER >
+		// MEMBER > ALLY > VISITOR): the owner's explicit block or trust decision about one specific
+		// player must never be silently overridden by that player's party membership. ALLY is
+		// deliberately the one explicit role checked AFTER the party-MEMBER lookup: party membership
+		// should upgrade an explicit ALLY entry to MEMBER, not the other way around. An explicit ALLY
+		// entry (granted via "/island alliance add", see MembershipService#allyAdd) is now the ONLY
+		// way to reach ALLY — the old party-alliance-derived path (ownerParty's alliedPartyIds) was
+		// retired along with alliedPartyIds itself; see IslandRole's own updated javadoc.
 		if (explicit.isPresent()) {
 			IslandRole role = explicit.get().role();
 			if (role == IslandRole.DENIED || role == IslandRole.CO_OWNER || role == IslandRole.MEMBER) {
@@ -419,11 +422,6 @@ public class IslandData implements Island {
 		}
 
 		if (explicit.isPresent() && explicit.get().role() == IslandRole.ALLY) {
-			return IslandRole.ALLY;
-		}
-
-		if (ownerParty.isPresent() && playerParty.isPresent()
-				&& ownerParty.get().getAlliedPartyIds().contains(playerParty.get().getPartyId())) {
 			return IslandRole.ALLY;
 		}
 

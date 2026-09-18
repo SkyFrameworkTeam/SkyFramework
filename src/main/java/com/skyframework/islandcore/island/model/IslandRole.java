@@ -8,11 +8,11 @@ package com.skyframework.islandcore.island.model;
 // island override, server default, or compiled table. It does NOT participate in FlagPreset's
 // 4-level VISITOR/ALLY/MEMBER table: an island owner can't weaken it, only promote/demote a
 // member into or out of it (see MembershipService#trust/untrust).
-// ALLY sits between MEMBER and VISITOR: granted either by an explicit per-player
-// "/island ally add" entry, or implicitly when the player's party is one of the island owner's
-// party's declared allies (see IslandData#getRoleOf and party/ for the party system). See
-// FlagRegistry for how each ROLE_BASED flag's compiled default treats MEMBER/ALLY/VISITOR
-// identically (all DENY) until the island owner opens it explicitly via a preset.
+// ALLY sits between MEMBER and VISITOR: granted by an explicit per-player "/island alliance add"
+// entry (or MemberAllyAddC2S from the client's Party menu — see MembershipService#allyAdd), managed
+// by the island's OWNER or CO_OWNER. See FlagRegistry for how each ROLE_BASED flag's compiled
+// default treats MEMBER/ALLY/VISITOR identically (all DENY) until the island owner opens it
+// explicitly via a preset.
 public enum IslandRole {
 	OWNER,
 	MEMBER,

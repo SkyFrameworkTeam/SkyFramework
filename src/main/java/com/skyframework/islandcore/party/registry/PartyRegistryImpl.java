@@ -122,24 +122,6 @@ public class PartyRegistryImpl implements PartyRegistry {
 	}
 
 	@Override
-	public void addAlly(UUID partyId, UUID targetPartyId) {
-		PartyData party = partiesById.get(partyId);
-		if (party != null) {
-			party.addAlly(targetPartyId);
-			saveIfStorageReady(party);
-		}
-	}
-
-	@Override
-	public void removeAlly(UUID partyId, UUID targetPartyId) {
-		PartyData party = partiesById.get(partyId);
-		if (party != null) {
-			party.removeAlly(targetPartyId);
-			saveIfStorageReady(party);
-		}
-	}
-
-	@Override
 	public void renameParty(UUID partyId, String newName) {
 		PartyData party = partiesById.get(partyId);
 		if (party == null) {

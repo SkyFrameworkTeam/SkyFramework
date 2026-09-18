@@ -8,6 +8,7 @@
 		"FarmlandTrampleMixin",
 		"FireSpreadMixin",
 		"LightningFireMixin",
+		"PistonHandlerMixin",
 		"PortalDestinationMixin",
 		"PortalIgnitionMixin",
 		"RaidManagerMixin",

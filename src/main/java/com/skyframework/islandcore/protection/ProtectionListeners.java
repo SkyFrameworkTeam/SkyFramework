@@ -42,10 +42,20 @@ public class ProtectionListeners {
 		if (island == null) {
 			return NO_ISLAND_MESSAGE;
 		}
-		if (!island.getBounds().contains(pos)) {
+		if (!island.getBounds().contains(pos) && !isBeyondWorldHeightLimit(pos)) {
 			return RESERVED_PLOT_MESSAGE;
 		}
 		return NO_PERMISSION_MESSAGE;
+	}
+
+	// Y=320 (one above the highest buildable layer) and Y=-64 (the world's own bottom — see
+	// IslandRegistryImpl's MIN_Y/MAX_Y, which already sets every island's own vertical bounds to
+	// exactly this same range) are the world's own absolute vertical limits, not this island's
+	// plot edge. Vanilla already shows its own "outside the world" message there, so
+	// RESERVED_PLOT_MESSAGE — meant for the island's horizontal/plot boundary — would just be a
+	// confusing, redundant second message stacked on top of it.
+	private static boolean isBeyondWorldHeightLimit(BlockPos pos) {
+		return pos.getY() >= 320 || pos.getY() <= -64;
 	}
 
 	public static void register() {

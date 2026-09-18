@@ -110,7 +110,6 @@ public class NbtPartyStorage implements PartyStorage {
 		nbt.putString("name", party.getName());
 		nbt.putUuid("leaderUuid", party.getLeaderUuid());
 		nbt.put("members", uuidListToNbt(party.getMembers()));
-		nbt.put("alliedPartyIds", uuidListToNbt(party.getAlliedPartyIds()));
 		nbt.putLong("createdAt", party.getCreatedAt().toEpochMilli());
 		nbt.putLong("updatedAt", party.getUpdatedAt().toEpochMilli());
 
@@ -122,11 +121,10 @@ public class NbtPartyStorage implements PartyStorage {
 		String name = nbt.getString("name");
 		UUID leaderUuid = nbt.getUuid("leaderUuid");
 		Set<UUID> members = uuidListFromNbt(nbt.getList("members", NbtElement.STRING_TYPE));
-		Set<UUID> alliedPartyIds = uuidListFromNbt(nbt.getList("alliedPartyIds", NbtElement.STRING_TYPE));
 		Instant createdAt = Instant.ofEpochMilli(nbt.getLong("createdAt"));
 		Instant updatedAt = Instant.ofEpochMilli(nbt.getLong("updatedAt"));
 
-		return new PartyData(partyId, name, leaderUuid, members, alliedPartyIds, createdAt, updatedAt);
+		return new PartyData(partyId, name, leaderUuid, members, createdAt, updatedAt);
 	}
 
 	private static NbtList uuidListToNbt(Collection<UUID> uuids) {

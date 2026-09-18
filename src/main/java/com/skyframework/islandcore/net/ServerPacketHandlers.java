@@ -16,6 +16,10 @@ import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
 import com.skyframework.islandcore.party.lifecycle.PartyDisbandRequests;
 import com.skyframework.islandcore.party.model.PartyData;
+import com.skyframework.islandcore.net.alliance.AllyLocationsS2C;
+import com.skyframework.islandcore.net.alliance.LocationSharingSetC2S;
+import com.skyframework.islandcore.net.alliance.LocationSharingStatusRequestC2S;
+import com.skyframework.islandcore.net.alliance.LocationSharingStatusS2C;
 import com.skyframework.islandcore.net.admin.dimension.DimensionAdminBuilder;
 import com.skyframework.islandcore.net.admin.dimension.DimensionCreateC2S;
 import com.skyframework.islandcore.net.admin.dimension.DimensionDeleteC2S;
@@ -83,8 +87,6 @@ import com.skyframework.islandcore.net.member.MemberInviteC2S;
 import com.skyframework.islandcore.net.member.MemberRemoveC2S;
 import com.skyframework.islandcore.net.member.MemberTrustC2S;
 import com.skyframework.islandcore.net.party.PartyAcceptC2S;
-import com.skyframework.islandcore.net.party.PartyAllyAddC2S;
-import com.skyframework.islandcore.net.party.PartyAllyRemoveC2S;
 import com.skyframework.islandcore.net.party.PartyCreateC2S;
 import com.skyframework.islandcore.net.party.PartyDisbandConfirmC2S;
 import com.skyframework.islandcore.net.party.PartyDisbandRequestC2S;
@@ -166,6 +168,7 @@ public final class ServerPacketHandlers {
 		registerBiomeTierHandlers();
 		registerFlagExceptionHandlers();
 		registerPartyHandlers();
+		registerLocationSharingHandlers();
 
 		registerAdminIslandHandlers();
 		registerSpawnAdminHandlers();
@@ -247,8 +250,11 @@ public final class ServerPacketHandlers {
 		PayloadTypeRegistry.playC2S().register(PartyRenameC2S.ID, PartyRenameC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(PartyDisbandRequestC2S.ID, PartyDisbandRequestC2S.CODEC);
 		PayloadTypeRegistry.playC2S().register(PartyDisbandConfirmC2S.ID, PartyDisbandConfirmC2S.CODEC);
-		PayloadTypeRegistry.playC2S().register(PartyAllyAddC2S.ID, PartyAllyAddC2S.CODEC);
-		PayloadTypeRegistry.playC2S().register(PartyAllyRemoveC2S.ID, PartyAllyRemoveC2S.CODEC);
+
+		PayloadTypeRegistry.playC2S().register(LocationSharingStatusRequestC2S.ID, LocationSharingStatusRequestC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(LocationSharingStatusS2C.ID, LocationSharingStatusS2C.CODEC);
+		PayloadTypeRegistry.playC2S().register(LocationSharingSetC2S.ID, LocationSharingSetC2S.CODEC);
+		PayloadTypeRegistry.playS2C().register(AllyLocationsS2C.ID, AllyLocationsS2C.CODEC);
 
 		PayloadTypeRegistry.playC2S().register(AdminIslandListRequestC2S.ID, AdminIslandListRequestC2S.CODEC);
 		PayloadTypeRegistry.playS2C().register(AdminIslandListS2C.ID, AdminIslandListS2C.CODEC);
@@ -781,54 +787,6 @@ public final class ServerPacketHandlers {
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
 		});
 
-		registerGuarded(PartyAllyAddC2S.ID, (payload, context) -> {
-			ServerPlayerEntity player = context.player();
-
-			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
-			if (maybeParty.isEmpty()) {
-				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
-				return;
-			}
-			PartyData party = maybeParty.get();
-
-			Optional<PartyData> maybeTarget = IslandCoreMod.PARTY_REGISTRY.getPartyByName(payload.targetPartyName());
-			if (maybeTarget.isEmpty()) {
-				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_NOT_FOUND));
-				return;
-			}
-			PartyData target = maybeTarget.get();
-
-			if (target.getPartyId().equals(party.getPartyId())) {
-				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_ALLY_SELF));
-				return;
-			}
-
-			// Same entry point "/party ally add" calls.
-			IslandCoreMod.PARTY_REGISTRY.addAlly(party.getPartyId(), target.getPartyId());
-			ServerPlayNetworking.send(player, ActionResultS2C.ok());
-		});
-
-		registerGuarded(PartyAllyRemoveC2S.ID, (payload, context) -> {
-			ServerPlayerEntity player = context.player();
-
-			Optional<PartyData> maybeParty = requirePartyLeader(player.getUuid());
-			if (maybeParty.isEmpty()) {
-				ServerPlayNetworking.send(player, ActionResultS2C.fail(notLeaderReason(player.getUuid())));
-				return;
-			}
-			PartyData party = maybeParty.get();
-
-			Optional<PartyData> maybeTarget = IslandCoreMod.PARTY_REGISTRY.getPartyByName(payload.targetPartyName());
-			if (maybeTarget.isEmpty()) {
-				ServerPlayNetworking.send(player, ActionResultS2C.fail(ActionReason.PARTY_NOT_FOUND));
-				return;
-			}
-			PartyData target = maybeTarget.get();
-
-			// Same entry point "/party ally remove" calls.
-			IslandCoreMod.PARTY_REGISTRY.removeAlly(party.getPartyId(), target.getPartyId());
-			ServerPlayNetworking.send(player, ActionResultS2C.ok());
-		});
 	}
 
 	// Shared by every leader-only party handler above: returns the sender's party if they're its
@@ -844,6 +802,31 @@ public final class ServerPacketHandlers {
 
 	private static String notLeaderReason(UUID playerUuid) {
 		return IslandCoreMod.PARTY_REGISTRY.getPartyOf(playerUuid).isEmpty() ? ActionReason.NO_PARTY : ActionReason.NOT_PARTY_LEADER;
+	}
+
+	// Renamed from the old registerAllianceHandlers: the island-to-island alliance request/accept/
+	// remove/status handlers that used to live here are gone (see AllianceService/AllianceRegistry,
+	// both retired — individual-player alliance management now goes through MemberAllyAddC2S/
+	// MemberAllyRemoveC2S instead, registered in the member/ block above). Only the location-sharing
+	// toggles remain, now 4 independent booleans (party vs. allies, send vs. receive) instead of 2.
+	private static void registerLocationSharingHandlers() {
+		registerGuarded(LocationSharingStatusRequestC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			boolean sendToParty = IslandCoreMod.LOCATION_SHARING_CONFIG.isSendPositionToPartyEnabled(player.getUuid());
+			boolean receiveFromParty = IslandCoreMod.LOCATION_SHARING_CONFIG.isReceivePositionsFromPartyEnabled(player.getUuid());
+			boolean sendToAllies = IslandCoreMod.LOCATION_SHARING_CONFIG.isSendPositionToAlliesEnabled(player.getUuid());
+			boolean receiveFromAllies = IslandCoreMod.LOCATION_SHARING_CONFIG.isReceivePositionsFromAlliesEnabled(player.getUuid());
+			ServerPlayNetworking.send(player, new LocationSharingStatusS2C(sendToParty, receiveFromParty, sendToAllies, receiveFromAllies));
+		});
+
+		registerGuarded(LocationSharingSetC2S.ID, (payload, context) -> {
+			ServerPlayerEntity player = context.player();
+			IslandCoreMod.LOCATION_SHARING_CONFIG.setSendPositionToParty(player.getUuid(), payload.sendPositionToParty());
+			IslandCoreMod.LOCATION_SHARING_CONFIG.setReceivePositionsFromParty(player.getUuid(), payload.receivePositionsFromParty());
+			IslandCoreMod.LOCATION_SHARING_CONFIG.setSendPositionToAllies(player.getUuid(), payload.sendPositionToAllies());
+			IslandCoreMod.LOCATION_SHARING_CONFIG.setReceivePositionsFromAllies(player.getUuid(), payload.receivePositionsFromAllies());
+			ServerPlayNetworking.send(player, ActionResultS2C.ok());
+		});
 	}
 
 	// Admin network block: island list/detail/delete, Spawn management, Dimension Manager, vanilla

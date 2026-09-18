@@ -15,8 +15,7 @@ public interface PartyRegistry {
 	// a member too — see PartyData's constructor). Empty if the player isn't in any party.
 	Optional<PartyData> getPartyOf(UUID playerUuid);
 
-	// Case-insensitive lookup, used to resolve "/party ally add <nombre>" and the name-uniqueness
-	// check in createParty/renameParty.
+	// Case-insensitive lookup, used for the name-uniqueness check in createParty/renameParty.
 	Optional<PartyData> getPartyByName(String name);
 
 	Collection<PartyData> getAllParties();
@@ -33,10 +32,6 @@ public interface PartyRegistry {
 	void addMember(UUID partyId, UUID playerUuid);
 
 	void removeMember(UUID partyId, UUID playerUuid);
-
-	void addAlly(UUID partyId, UUID targetPartyId);
-
-	void removeAlly(UUID partyId, UUID targetPartyId);
 
 	// Throws IllegalStateException if the new name is already taken (case-insensitive) by another party.
 	void renameParty(UUID partyId, String newName);

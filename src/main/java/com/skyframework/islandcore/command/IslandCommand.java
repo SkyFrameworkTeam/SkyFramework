@@ -17,8 +17,10 @@ import com.skyframework.islandcore.api.network.ActionReason;
 import com.skyframework.islandcore.api.permission.IslandPermissions;
 import com.skyframework.islandcore.island.lifecycle.IslandActionService;
 import com.skyframework.islandcore.island.lifecycle.MembershipService;
+import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
 import com.skyframework.islandcore.island.model.IslandSetting;
+import com.skyframework.islandcore.protection.AdminOverrideState;
 import com.skyframework.islandcore.protection.exception.ExceptionGroup;
 import com.skyframework.islandcore.protection.exception.ExceptionGroupCategory;
 import com.skyframework.islandcore.protection.exception.ExceptionResolver;
@@ -38,6 +40,7 @@ import net.minecraft.command.argument.GameProfileArgumentType;
 import net.minecraft.command.argument.IdentifierArgumentType;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -115,13 +118,21 @@ public class IslandCommand {
 						.then(CommandManager.literal("untrust")
 								.then(CommandManager.argument("player", EntityArgumentType.player())
 										.executes(IslandCommand::executeUntrust)))
-						.then(CommandManager.literal("ally")
+						// Individual-player alliance list, managed by OWNER or CO_OWNER (see
+						// MembershipService#allyAdd/allyRemove's own resolveManagedIsland). Replaces the
+						// old "/island ally add/remove" naming (same underlying mechanism — IslandRole.ALLY
+						// via an explicit IslandMember) for consistency with the "alianzas" consolidation
+						// sprint's terminology; also reachable from the client's Party menu via
+						// MemberAllyAddC2S/MemberAllyRemoveC2S, unchanged.
+						.then(CommandManager.literal("alliance")
 								.then(CommandManager.literal("add")
-										.then(CommandManager.argument("player", EntityArgumentType.player())
-												.executes(IslandCommand::executeAllyAdd)))
+										.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+												.executes(IslandCommand::executeAllianceAdd)))
 								.then(CommandManager.literal("remove")
-										.then(CommandManager.argument("player", EntityArgumentType.player())
-												.executes(IslandCommand::executeAllyRemove))))
+										.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
+												.executes(IslandCommand::executeAllianceRemove)))
+								.then(CommandManager.literal("list")
+										.executes(IslandCommand::executeAllianceList)))
 						.then(CommandManager.literal("kick")
 								.then(CommandManager.argument("player", GameProfileArgumentType.gameProfile())
 										.executes(IslandCommand::executeKick)))
@@ -207,7 +218,12 @@ public class IslandCommand {
 										.then(CommandManager.argument("player", EntityArgumentType.player())
 												.executes(IslandCommand::executeAdminDelete)
 												.then(CommandManager.literal("confirm")
-														.executes(IslandCommand::executeAdminDeleteConfirm)))))
+														.executes(IslandCommand::executeAdminDeleteConfirm))))
+								.then(CommandManager.literal("override")
+										.then(CommandManager.literal("on")
+												.executes(ctx -> executeAdminOverride(ctx, true)))
+										.then(CommandManager.literal("off")
+												.executes(ctx -> executeAdminOverride(ctx, false)))))
 				)
 		);
 	}
@@ -919,38 +935,75 @@ public class IslandCommand {
 		return 1;
 	}
 
-	private static int executeAllyAdd(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+	// Individual-player alliance management (IslandRole.ALLY via an explicit IslandMember) — same
+	// entry points MemberAllyAddC2S/MemberAllyRemoveC2S call from the client's Party menu. OWNER or
+	// CO_OWNER, unlike GameProfileArgumentType-resolved add/remove not requiring the TARGET to be
+	// online, same reasoning as executeInvite/executeKick.
+	private static int executeAllianceAdd(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
 		ServerCommandSource source = ctx.getSource();
-		ServerPlayerEntity executor = source.getPlayerOrThrow();
-		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		GameProfile targetProfile = GameProfileArgumentType.getProfileArgument(ctx, "player").iterator().next();
 
-		ActionOutcome<Void> outcome = MembershipService.allyAdd(executor, target.getUuid());
+		ActionOutcome<Void> outcome = MembershipService.allyAdd(player, targetProfile.getId());
 		if (!outcome.success()) {
-			source.sendError(Text.literal("No tienes una isla."));
+			sendAllianceError(source, outcome.reason());
 			return 0;
 		}
 
-		String targetName = target.getGameProfile().getName();
-		source.sendFeedback(() -> Text.literal(targetName + " ahora es aliado de tu isla."), false);
-
+		source.sendFeedback(() -> Text.literal(targetProfile.getName() + " ahora es aliado de tu isla."), false);
 		return 1;
 	}
 
-	private static int executeAllyRemove(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+	private static int executeAllianceRemove(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
 		ServerCommandSource source = ctx.getSource();
-		ServerPlayerEntity executor = source.getPlayerOrThrow();
-		ServerPlayerEntity target = EntityArgumentType.getPlayer(ctx, "player");
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+		GameProfile targetProfile = GameProfileArgumentType.getProfileArgument(ctx, "player").iterator().next();
 
-		ActionOutcome<Void> outcome = MembershipService.allyRemove(executor, target.getUuid());
+		ActionOutcome<Void> outcome = MembershipService.allyRemove(player, targetProfile.getId());
 		if (!outcome.success()) {
-			source.sendError(Text.literal("No tienes una isla."));
+			sendAllianceError(source, outcome.reason());
 			return 0;
 		}
 
-		String targetName = target.getGameProfile().getName();
-		source.sendFeedback(() -> Text.literal(targetName + " ya no es aliado de tu isla."), false);
-
+		source.sendFeedback(() -> Text.literal(targetProfile.getName() + " ya no es aliado de tu isla."), false);
 		return 1;
+	}
+
+	private static int executeAllianceList(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		Optional<Island> maybeIsland = MembershipService.resolveManagedIsland(player.getUuid());
+		if (maybeIsland.isEmpty()) {
+			source.sendError(Text.literal("No tienes una isla de la que seas propietario o copropietario."));
+			return 0;
+		}
+		Island island = maybeIsland.get();
+		MinecraftServer server = source.getServer();
+
+		List<IslandMember> allies = island.getMembers().stream().filter(member -> member.role() == IslandRole.ALLY).toList();
+
+		source.sendFeedback(() -> Text.literal("=== Aliados de tu isla ===").formatted(Formatting.BOLD, Formatting.AQUA), false);
+		if (allies.isEmpty()) {
+			source.sendFeedback(() -> Text.literal("No tienes ningún aliado."), false);
+		} else {
+			for (IslandMember ally : allies) {
+				String name = server.getUserCache().getByUuid(ally.playerUuid()).map(GameProfile::getName).orElse(ally.playerUuid().toString());
+				source.sendFeedback(() -> Text.literal("- " + name), false);
+			}
+		}
+
+		return allies.size();
+	}
+
+	private static void sendAllianceError(ServerCommandSource source, String reason) {
+		String message = switch (reason) {
+			case ActionReason.NO_ISLAND -> "No tienes una isla de la que seas propietario o copropietario.";
+			case ActionReason.TARGET_NOT_FOUND -> "No se ha encontrado a ese jugador.";
+			case ActionReason.ALLIANCE_SELF -> "No puedes añadirte a ti mismo como aliado de tu propia isla.";
+			default -> "No se ha podido completar la acción.";
+		};
+		source.sendError(Text.literal(message));
 	}
 
 	private static int executeKick(CommandContext<ServerCommandSource> ctx) throws CommandSyntaxException {
@@ -1242,6 +1295,26 @@ public class IslandCommand {
 
 		String targetName = target.getGameProfile().getName();
 		source.sendFeedback(() -> Text.literal("La isla de " + targetName + " se está borrando..."), false);
+
+		return 1;
+	}
+
+	// In-memory, per-connection toggle (see AdminOverrideState) — resets on reconnect, same as
+	// other per-connection admin states. While on, AccessControllerImpl treats this player as
+	// OWNER on every island (Spawn included) for every permission, no exceptions.
+	private static int executeAdminOverride(CommandContext<ServerCommandSource> ctx, boolean enable) throws CommandSyntaxException {
+		ServerCommandSource source = ctx.getSource();
+		ServerPlayerEntity player = source.getPlayerOrThrow();
+
+		AdminOverrideState.setActive(player.getUuid(), enable);
+
+		if (enable) {
+			source.sendFeedback(() -> Text.literal(
+					"⚠ Modo override activado: tienes permisos de OWNER en CUALQUIER isla (incluida Spawn) hasta que "
+							+ "lo desactives con /island admin override off, o te reconectes.").formatted(Formatting.RED), false);
+		} else {
+			source.sendFeedback(() -> Text.literal("Modo override desactivado.").formatted(Formatting.GRAY), false);
+		}
 
 		return 1;
 	}

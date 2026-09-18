@@ -32,14 +32,6 @@ public final class PartyStatusBuilder {
 			members.add(new PartyStatusS2C.MemberEntry(memberUuid, resolveName(server, memberUuid)));
 		}
 
-		List<PartyStatusS2C.AlliedPartyEntry> alliedParties = new ArrayList<>();
-		for (UUID alliedPartyId : party.getAlliedPartyIds()) {
-			String alliedName = IslandCoreMod.PARTY_REGISTRY.getParty(alliedPartyId)
-					.map(PartyData::getName)
-					.orElse("");
-			alliedParties.add(new PartyStatusS2C.AlliedPartyEntry(alliedPartyId, alliedName));
-		}
-
 		return new PartyStatusS2C(
 				true,
 				party.getPartyId(),
@@ -47,7 +39,6 @@ public final class PartyStatusBuilder {
 				party.getLeaderUuid(),
 				resolveName(server, party.getLeaderUuid()),
 				members,
-				alliedParties,
 				Optional.empty()
 		);
 	}

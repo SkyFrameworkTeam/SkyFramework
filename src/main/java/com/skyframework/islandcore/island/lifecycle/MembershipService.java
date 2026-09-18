@@ -161,12 +161,18 @@ public final class MembershipService {
 	}
 
 	// Same shape as trust()/untrust() above, but assigning/removing the ALLY role instead of
-	// CO_OWNER — used by "/island ally add/remove" (see IslandRole for how ALLY differs: same
-	// per-flag defaults as VISITOR unless the owner opens a flag for it explicitly).
+	// CO_OWNER — used by "/island alliance add/remove" and MemberAllyAddC2S/RemoveC2S (see
+	// IslandRole for how ALLY differs: same per-flag defaults as VISITOR unless the owner opens a
+	// flag for it explicitly). Unlike trust/untrust/kick/invite (OWNER-only, via getIslandByOwner),
+	// this one also allows CO_OWNER — see resolveManagedIsland — per the "alianzas" consolidation
+	// sprint's explicit requirement that a co-owner can manage the ally list too.
 	public static ActionOutcome<Void> allyAdd(ServerPlayerEntity executor, UUID targetUuid) {
-		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		Optional<Island> maybeIsland = resolveManagedIsland(executor.getUuid());
 		if (maybeIsland.isEmpty()) {
 			return ActionOutcome.fail(ActionReason.NO_ISLAND);
+		}
+		if (targetUuid.equals(executor.getUuid())) {
+			return ActionOutcome.fail(ActionReason.ALLIANCE_SELF);
 		}
 
 		Island island = maybeIsland.get();
@@ -177,7 +183,7 @@ public final class MembershipService {
 	}
 
 	public static ActionOutcome<Void> allyRemove(ServerPlayerEntity executor, UUID targetUuid) {
-		Optional<Island> maybeIsland = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(executor.getUuid());
+		Optional<Island> maybeIsland = resolveManagedIsland(executor.getUuid());
 		if (maybeIsland.isEmpty()) {
 			return ActionOutcome.fail(ActionReason.NO_ISLAND);
 		}
@@ -186,6 +192,22 @@ public final class MembershipService {
 		IslandCoreMod.ISLAND_REGISTRY.removeMember(island.getIslandId(), targetUuid);
 
 		return ActionOutcome.ok();
+	}
+
+	// OWNER's own island if they have one, otherwise the first island (there can only ever be one)
+	// where they hold CO_OWNER — there's no direct player->island index for non-owners in
+	// IslandRegistryApi, so this falls back to scanning getAllIslands(), acceptable here since
+	// alliance management is a rare, non-hot-path action (unlike, say, per-tick protection checks).
+	// Public: IslandCommand#executeAllianceList also needs it, to list the same island's allies
+	// allyAdd/allyRemove would manage.
+	public static Optional<Island> resolveManagedIsland(UUID playerUuid) {
+		Optional<Island> owned = IslandCoreMod.ISLAND_REGISTRY.getIslandByOwner(playerUuid);
+		if (owned.isPresent()) {
+			return owned;
+		}
+		return IslandCoreMod.ISLAND_REGISTRY.getAllIslands().stream()
+				.filter(island -> island.getRoleOf(playerUuid) == IslandRole.CO_OWNER)
+				.findFirst();
 	}
 
 	// Admin-scoped variants of trust()/untrust() above, for the Spawn admin block: they operate on

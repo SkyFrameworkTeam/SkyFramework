@@ -72,6 +72,12 @@ public class AccessControllerImpl implements AccessController {
 	// useAllowBreak selects which ExceptionGroup field a matching exception decides with:
 	// isAllowBreak() for canBreak, isAllowInteract() for canPlace/canInteractBlock/canOpenContainer.
 	private boolean checkBlock(UUID playerUuid, ServerWorld world, BlockPos pos, IslandPermission permission, Flag flag, boolean useAllowBreak) {
+		// /island admin override on: full OWNER-everywhere bypass, checked before even the
+		// dimension/island lookups below so it also covers the Spawn island.
+		if (AdminOverrideState.isActive(playerUuid)) {
+			return true;
+		}
+
 		if (!world.getRegistryKey().equals(ISLANDS_DIMENSION)) {
 			return true;
 		}
@@ -114,6 +120,11 @@ public class AccessControllerImpl implements AccessController {
 	}
 
 	private boolean checkEntity(UUID playerUuid, ServerWorld world, Entity entity, boolean useAllowBreak) {
+		// Same override bypass as checkBlock above, checked first for the same reason.
+		if (AdminOverrideState.isActive(playerUuid)) {
+			return true;
+		}
+
 		if (!world.getRegistryKey().equals(ISLANDS_DIMENSION)) {
 			return true;
 		}

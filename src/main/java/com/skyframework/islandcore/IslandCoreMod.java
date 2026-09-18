@@ -19,6 +19,7 @@ import com.skyframework.islandcore.island.biome.BiomeTierRegistryImpl;
 import com.skyframework.islandcore.island.biome.IslandBiomeApplier;
 import com.skyframework.islandcore.island.entity.IslandEntityTracker;
 import com.skyframework.islandcore.island.entity.IslandEntityTrackerImpl;
+import com.skyframework.islandcore.island.lifecycle.AllyLocationBroadcaster;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionService;
 import com.skyframework.islandcore.island.lifecycle.IslandDeletionServiceImpl;
 import com.skyframework.islandcore.island.lifecycle.InviteManager;
@@ -33,12 +34,14 @@ import com.skyframework.islandcore.party.registry.PartyRegistryImpl;
 import com.skyframework.islandcore.permission.FallbackPermissionProvider;
 import com.skyframework.islandcore.permission.LuckPermsProvider;
 import com.skyframework.islandcore.player.FirstJoinTracker;
+import com.skyframework.islandcore.player.PlayerLocationSharingConfig;
 import com.skyframework.islandcore.player.StarterKitConfig;
 import com.skyframework.islandcore.player.rescue.VoidRescueConfig;
 import com.skyframework.islandcore.player.rescue.VoidRescueListener;
 import com.skyframework.islandcore.portal.PortalLinkConfig;
 import com.skyframework.islandcore.protection.AccessController;
 import com.skyframework.islandcore.protection.AccessControllerImpl;
+import com.skyframework.islandcore.protection.AdminOverrideState;
 import com.skyframework.islandcore.protection.DamageProtectionListener;
 import com.skyframework.islandcore.protection.DeniedActionThrottler;
 import com.skyframework.islandcore.protection.ProtectionListeners;
@@ -109,6 +112,8 @@ public class IslandCoreMod implements ModInitializer {
 	public static FlagPermissionRequirements FLAG_PERMISSION_REQUIREMENTS;
 	public static PartyRegistry PARTY_REGISTRY;
 	public static PartyInviteManager PARTY_INVITE_MANAGER;
+	public static PlayerLocationSharingConfig LOCATION_SHARING_CONFIG;
+	public static AllyLocationBroadcaster ALLY_LOCATION_BROADCASTER;
 
 	@Override
 	public void onInitialize() {
@@ -147,8 +152,12 @@ public class IslandCoreMod implements ModInitializer {
 		// self-contained SERVER_STARTED hook loads party storage, same pattern as DIMENSION_REGISTRY.
 		PARTY_REGISTRY = new PartyRegistryImpl();
 		PARTY_INVITE_MANAGER = new PartyInviteManagerImpl();
+		LOCATION_SHARING_CONFIG = new PlayerLocationSharingConfig();
+		ALLY_LOCATION_BROADCASTER = new AllyLocationBroadcaster();
+		ServerTickEvents.END_SERVER_TICK.register(ALLY_LOCATION_BROADCASTER::tickAll);
 		ProtectionListeners.register();
 		DeniedActionThrottler.register();
+		AdminOverrideState.register();
 		IslandCommand.register();
 		DimensionCommand.register();
 		PartyCommand.register();

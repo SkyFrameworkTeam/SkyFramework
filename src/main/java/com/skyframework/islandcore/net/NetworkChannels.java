@@ -23,7 +23,7 @@ public final class NetworkChannels {
 	// (that would require decoding the payload before knowing whether it's safe to decode it) — a
 	// change to the handshake payloads themselves still requires shipping server and client
 	// together, the same as every codec change in this project always has.
-	public static final int PROTOCOL_VERSION = 3;
+	public static final int PROTOCOL_VERSION = 4;
 
 	public static final Identifier HANDSHAKE_C2S = Identifier.of("islandcore", "handshake_c2s");
 	public static final Identifier HANDSHAKE_S2C = Identifier.of("islandcore", "handshake_s2c");
@@ -135,8 +135,14 @@ public final class NetworkChannels {
 	public static final Identifier PARTY_RENAME_C2S = Identifier.of("islandcore", "party_rename_c2s");
 	public static final Identifier PARTY_DISBAND_REQUEST_C2S = Identifier.of("islandcore", "party_disband_request_c2s");
 	public static final Identifier PARTY_DISBAND_CONFIRM_C2S = Identifier.of("islandcore", "party_disband_confirm_c2s");
-	public static final Identifier PARTY_ALLY_ADD_C2S = Identifier.of("islandcore", "party_ally_add_c2s");
-	public static final Identifier PARTY_ALLY_REMOVE_C2S = Identifier.of("islandcore", "party_ally_remove_c2s");
+
+	// Per-player ally-location-sharing preferences — see player.PlayerLocationSharingConfig.
+	public static final Identifier LOCATION_SHARING_STATUS_REQUEST_C2S = Identifier.of("islandcore", "location_sharing_status_request_c2s");
+	public static final Identifier LOCATION_SHARING_STATUS_S2C = Identifier.of("islandcore", "location_sharing_status_s2c");
+	public static final Identifier LOCATION_SHARING_SET_C2S = Identifier.of("islandcore", "location_sharing_set_c2s");
+
+	// Periodic push (not requested by the client) — see island.lifecycle.AllyLocationBroadcaster.
+	public static final Identifier ALLY_LOCATIONS_S2C = Identifier.of("islandcore", "ally_locations_s2c");
 
 	private NetworkChannels() {
 	}
