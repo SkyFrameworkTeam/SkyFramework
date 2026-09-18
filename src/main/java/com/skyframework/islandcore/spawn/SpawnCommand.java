@@ -4,13 +4,13 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import com.skyframework.islandcore.IslandCoreMod;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
 
 // "/spawn", open to every player (no OP required).
 public class SpawnCommand {
@@ -30,7 +30,8 @@ public class SpawnCommand {
 		ServerPlayerEntity player = source.getPlayerOrThrow();
 
 		if (!IslandCoreMod.SPAWN_CONFIG.isEnabled()) {
-			source.sendError(Text.literal("El comando /spawn está desactivado en este servidor."));
+			source.sendError(ServerLang.of(player,
+					"El comando /spawn está desactivado en este servidor.", "The /spawn command is disabled on this server."));
 			return 0;
 		}
 

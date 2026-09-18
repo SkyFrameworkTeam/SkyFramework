@@ -9,9 +9,11 @@ import com.skyframework.islandcore.island.entity.EntityCategory;
 import com.skyframework.islandcore.island.model.IslandBounds;
 import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.ClickEvent;
 import net.minecraft.text.HoverEvent;
 import net.minecraft.text.MutableText;
@@ -74,7 +76,8 @@ public final class IslandMessages {
 	// Player-facing view: readable, no raw UUIDs/bounds, technical fields omitted.
 	// Used by /island info and /island list.
 	public static void sendIslandSummaryPlayer(ServerCommandSource source, Island island) {
-		source.sendFeedback(() -> Text.literal("=== Tu Isla ===").formatted(Formatting.BOLD, Formatting.AQUA), false);
+		ServerPlayerEntity player = source.getPlayer();
+		source.sendFeedback(() -> ServerLang.of(player, "=== Tu Isla ===", "=== Your Island ===").copy().formatted(Formatting.BOLD, Formatting.AQUA), false);
 
 		int currentSize = island.getIslandSize();
 		int maxSize = IslandCoreMod.PERMISSION_PROVIDER.getHighestSizeAllowed(island.getOwnerUuid());
@@ -86,7 +89,7 @@ public final class IslandMessages {
 		source.sendFeedback(() -> labeled("Home: ", home.getX() + ", " + home.getY() + ", " + home.getZ()), false);
 
 		if (island.getState() != IslandState.ACTIVE) {
-			source.sendFeedback(() -> Text.literal("Estado: " + island.getState()).formatted(Formatting.RED), false);
+			source.sendFeedback(() -> ServerLang.of(player, "Estado: " + island.getState(), "State: " + island.getState()).copy().formatted(Formatting.RED), false);
 		}
 
 		sendMembersSectionPlayer(source, island);
@@ -160,11 +163,12 @@ public final class IslandMessages {
 	}
 
 	private static void sendMembersSectionPlayer(ServerCommandSource source, Island island) {
-		source.sendFeedback(() -> Text.literal("Miembros").formatted(Formatting.BOLD, Formatting.GOLD), false);
+		ServerPlayerEntity player = source.getPlayer();
+		source.sendFeedback(() -> ServerLang.of(player, "Miembros", "Members").copy().formatted(Formatting.BOLD, Formatting.GOLD), false);
 
 		MinecraftServer server = source.getServer();
 
-		source.sendFeedback(() -> memberLine(server, island.getOwnerUuid(), IslandRole.OWNER), false);
+		source.sendFeedback(() -> memberLine(player, server, island.getOwnerUuid(), IslandRole.OWNER), false);
 
 		for (IslandMember member : island.getMembers()) {
 			// VISITOR/DENIED aren't explicit members: nothing currently stores them here, but
@@ -172,14 +176,15 @@ public final class IslandMessages {
 			if (member.role() != IslandRole.MEMBER && member.role() != IslandRole.CO_OWNER) {
 				continue;
 			}
-			source.sendFeedback(() -> memberLine(server, member.playerUuid(), member.role()), false);
+			source.sendFeedback(() -> memberLine(player, server, member.playerUuid(), member.role()), false);
 		}
 	}
 
-	private static Text memberLine(MinecraftServer server, UUID playerUuid, IslandRole role) {
+	private static Text memberLine(ServerPlayerEntity player, MinecraftServer server, UUID playerUuid, IslandRole role) {
 		String name = resolveName(server, playerUuid);
-		return Text.literal("- " + name + " ")
-				.append(Text.literal("(" + role + ")").formatted(roleColor(role)));
+		return ServerLang.of(player, "- " + name + " ", "- " + name + " ")
+				.copy()
+				.append(ServerLang.of(player, "(" + role + ")", "(" + role + ")").copy().formatted(roleColor(role)));
 	}
 
 	private static Text memberLineAdmin(MinecraftServer server, UUID playerUuid, IslandRole role) {

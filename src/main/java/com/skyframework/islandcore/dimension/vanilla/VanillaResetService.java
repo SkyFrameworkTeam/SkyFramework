@@ -9,6 +9,7 @@ import com.google.gson.JsonParser;
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
 import com.skyframework.islandcore.teleport.TeleportBackend;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -17,7 +18,6 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -312,9 +312,12 @@ public class VanillaResetService {
 		}
 
 		player.sendMessage(
-				Text.literal(dimensionKey + " se reseteará en el próximo reinicio del servidor en " + secondsRemaining
-						+ "s - /dimension vanilla regenerate " + dimensionKey + " confirm para confirmar")
-						.formatted(Formatting.RED),
+				ServerLang.of(player,
+								dimensionKey + " se reseteará en el próximo reinicio del servidor en " + secondsRemaining
+										+ "s - /dimension vanilla regenerate " + dimensionKey + " confirm para confirmar",
+								dimensionKey + " will reset on the server's next restart in " + secondsRemaining
+										+ "s - /dimension vanilla regenerate " + dimensionKey + " confirm to confirm")
+						.copy().formatted(Formatting.RED),
 				true);
 	}
 
@@ -324,7 +327,8 @@ public class VanillaResetService {
 			return;
 		}
 
-		player.sendMessage(Text.literal("La solicitud de reseteo de " + dimensionKey + " ha caducado."), false);
+		player.sendMessage(ServerLang.of(player,
+				"La solicitud de reseteo de " + dimensionKey + " ha caducado.", "The reset request for " + dimensionKey + " has expired."), false);
 	}
 
 	// lastNotifiedSecond tracks the countdown value last shown on the action bar, so

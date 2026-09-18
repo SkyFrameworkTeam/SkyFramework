@@ -108,6 +108,7 @@ import com.skyframework.islandcore.protection.flag.FlagCategory;
 import com.skyframework.islandcore.protection.flag.FlagPreset;
 import com.skyframework.islandcore.protection.flag.FlagRegistry;
 import com.skyframework.islandcore.protection.flag.TriState;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -117,7 +118,6 @@ import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
@@ -649,9 +649,11 @@ public final class ServerPacketHandlers {
 
 			ServerPlayerEntity targetPlayer = context.server().getPlayerManager().getPlayer(targetUuid.get());
 			if (targetPlayer != null) {
-				targetPlayer.sendMessage(Text.literal(player.getGameProfile().getName()
-						+ " te ha invitado a su party \"" + party.getName()
-						+ "\". Usa /party accept en los próximos 5 minutos para unirte."), false);
+				targetPlayer.sendMessage(ServerLang.of(targetPlayer,
+						player.getGameProfile().getName() + " te ha invitado a su party \"" + party.getName()
+								+ "\". Usa /party accept en los próximos 5 minutos para unirte.",
+						player.getGameProfile().getName() + " has invited you to their party \"" + party.getName()
+								+ "\". Use /party accept within the next 5 minutes to join."), false);
 			}
 
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
@@ -677,8 +679,9 @@ public final class ServerPacketHandlers {
 
 			ServerPlayerEntity leader = context.server().getPlayerManager().getPlayer(party.getLeaderUuid());
 			if (leader != null) {
-				leader.sendMessage(Text.literal(
-						player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a la party."), false);
+				leader.sendMessage(ServerLang.of(leader,
+						player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a la party.",
+						player.getGameProfile().getName() + " has accepted your invitation and joined the party."), false);
 			}
 
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
@@ -721,7 +724,9 @@ public final class ServerPacketHandlers {
 
 			ServerPlayerEntity targetPlayer = context.server().getPlayerManager().getPlayer(payload.targetUuid());
 			if (targetPlayer != null) {
-				targetPlayer.sendMessage(Text.literal("Has sido expulsado de la party \"" + party.getName() + "\"."), false);
+				targetPlayer.sendMessage(ServerLang.of(targetPlayer,
+					"Has sido expulsado de la party \"" + party.getName() + "\".",
+					"You've been kicked from the party \"" + party.getName() + "\"."), false);
 			}
 
 			ServerPlayNetworking.send(player, ActionResultS2C.ok());
@@ -786,7 +791,9 @@ public final class ServerPacketHandlers {
 				}
 				ServerPlayerEntity member = server.getPlayerManager().getPlayer(memberUuid);
 				if (member != null) {
-					member.sendMessage(Text.literal("La party \"" + party.getName() + "\" ha sido disuelta por su líder."), false);
+					member.sendMessage(ServerLang.of(member,
+						"La party \"" + party.getName() + "\" ha sido disuelta por su líder.",
+						"The party \"" + party.getName() + "\" has been disbanded by its leader."), false);
 				}
 			}
 

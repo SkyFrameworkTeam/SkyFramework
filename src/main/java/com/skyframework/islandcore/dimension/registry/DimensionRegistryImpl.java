@@ -10,6 +10,7 @@ import com.skyframework.islandcore.dimension.runtime.DimensionRuntimeProvider;
 import com.skyframework.islandcore.dimension.storage.DimensionStorage;
 import com.skyframework.islandcore.dimension.storage.NbtDimensionStorage;
 import com.skyframework.islandcore.teleport.TeleportBackend;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -19,7 +20,6 @@ import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.WorldSavePath;
@@ -284,12 +284,16 @@ public class DimensionRegistryImpl implements DimensionRegistry {
 		}
 
 		String action = request.regenerate ? "regenerará" : "eliminará";
+		String actionEn = request.regenerate ? "will regenerate" : "will be deleted";
 		String confirmCommand = request.regenerate ? "/dimension regenerate" : "/dimension delete";
 
 		player.sendMessage(
-				Text.literal("Dimensión " + id.getPath() + " se " + action + " en " + secondsRemaining + "s - "
-						+ confirmCommand + " " + id.getPath() + " confirm para confirmar")
-						.formatted(Formatting.RED),
+				ServerLang.of(player,
+								"Dimensión " + id.getPath() + " se " + action + " en " + secondsRemaining + "s - "
+										+ confirmCommand + " " + id.getPath() + " confirm para confirmar",
+								"Dimension " + id.getPath() + " " + actionEn + " in " + secondsRemaining + "s - "
+										+ confirmCommand + " " + id.getPath() + " confirm to confirm")
+						.copy().formatted(Formatting.RED),
 				true);
 	}
 
@@ -299,7 +303,9 @@ public class DimensionRegistryImpl implements DimensionRegistry {
 			return;
 		}
 
-		player.sendMessage(Text.literal("La solicitud sobre la dimensión " + id.getPath() + " ha caducado."), false);
+		player.sendMessage(ServerLang.of(player,
+				"La solicitud sobre la dimensión " + id.getPath() + " ha caducado.",
+				"The request for dimension " + id.getPath() + " has expired."), false);
 	}
 
 	private void tickPendingRemovals() {

@@ -6,6 +6,7 @@ import com.skyframework.islandcore.api.island.IslandState;
 import com.skyframework.islandcore.island.model.IslandBounds;
 import com.skyframework.islandcore.island.model.IslandData;
 import com.skyframework.islandcore.teleport.TeleportBackend;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
@@ -18,7 +19,6 @@ import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -169,8 +169,9 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 		}
 
 		player.sendMessage(
-				Text.literal("Isla se eliminará en " + secondsRemaining + "s - /island delete confirm para confirmar")
-						.formatted(Formatting.RED),
+				ServerLang.of(player, "Isla se eliminará en " + secondsRemaining + "s - /island delete confirm para confirmar",
+								"Island will be deleted in " + secondsRemaining + "s - /island delete confirm to confirm")
+						.copy().formatted(Formatting.RED),
 				true);
 	}
 
@@ -180,7 +181,8 @@ public class IslandDeletionServiceImpl implements IslandDeletionService {
 			return;
 		}
 
-		player.sendMessage(Text.literal("La solicitud de borrado ha caducado. Tu isla sigue intacta."), false);
+		player.sendMessage(ServerLang.of(player,
+				"La solicitud de borrado ha caducado. Tu isla sigue intacta.", "The deletion request has expired. Your island is still intact."), false);
 	}
 
 	private void tickBlockClearing() {

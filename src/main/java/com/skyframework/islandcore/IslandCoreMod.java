@@ -53,9 +53,11 @@ import com.skyframework.islandcore.rtp.RtpCommand;
 import com.skyframework.islandcore.rtp.RtpConfig;
 import com.skyframework.islandcore.spawn.SpawnCommand;
 import com.skyframework.islandcore.spawn.SpawnConfig;
+import com.skyframework.islandcore.teleport.PlayerLastPositionStore;
 import com.skyframework.islandcore.teleport.TeleportManager;
 import com.skyframework.islandcore.teleport.TeleportManagerImpl;
 import com.skyframework.islandcore.teleport.VanillaTeleportBackend;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
@@ -69,7 +71,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
 import org.slf4j.Logger;
@@ -114,6 +115,7 @@ public class IslandCoreMod implements ModInitializer {
 	public static PartyInviteManager PARTY_INVITE_MANAGER;
 	public static PlayerLocationSharingConfig LOCATION_SHARING_CONFIG;
 	public static AllyLocationBroadcaster ALLY_LOCATION_BROADCASTER;
+	public static PlayerLastPositionStore PLAYER_LAST_POSITION_STORE;
 
 	@Override
 	public void onInitialize() {
@@ -180,6 +182,7 @@ public class IslandCoreMod implements ModInitializer {
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> ISLAND_REGISTRY.saveAll());
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> PARTY_REGISTRY.saveAll());
 
+		PLAYER_LAST_POSITION_STORE = new PlayerLastPositionStore();
 		TELEPORT_MANAGER = new TeleportManagerImpl(new VanillaTeleportBackend());
 		ServerTickEvents.END_SERVER_TICK.register(server -> TELEPORT_MANAGER.tickAll());
 
@@ -239,7 +242,9 @@ public class IslandCoreMod implements ModInitializer {
 
 				boolean teleported = new VanillaTeleportBackend().teleport(player, world, spawnIsland.getHomeLocation());
 				if (teleported && firstJoin) {
-					player.sendMessage(Text.literal("¡Bienvenido a SkyFramework! Usa /island create para crear tu propia isla."), false);
+					player.sendMessage(ServerLang.of(player,
+							"¡Bienvenido a SkyFramework! Usa /island create para crear tu propia isla.",
+							"Welcome to SkyFramework! Use /island create to create your own island."), false);
 				}
 			});
 		});

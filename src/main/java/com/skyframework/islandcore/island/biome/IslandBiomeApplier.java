@@ -1,6 +1,7 @@
 package com.skyframework.islandcore.island.biome;
 
 import com.skyframework.islandcore.island.model.IslandBounds;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -11,7 +12,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerChunkLoadingManager;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
@@ -117,7 +117,8 @@ public class IslandBiomeApplier {
 
 		ServerPlayerEntity player = server.getPlayerManager().getPlayer(job.requestedBy);
 		if (player != null) {
-			player.sendMessage(Text.literal("El cambio de bioma de tu isla ha terminado."), false);
+			player.sendMessage(ServerLang.of(player,
+					"El cambio de bioma de tu isla ha terminado.", "Your island's biome change has finished."), false);
 		}
 	}
 

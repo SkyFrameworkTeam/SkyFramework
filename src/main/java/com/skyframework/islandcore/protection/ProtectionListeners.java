@@ -2,6 +2,7 @@ package com.skyframework.islandcore.protection;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
@@ -15,6 +16,7 @@ import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.ItemStack;
 import net.minecraft.screen.NamedScreenHandlerFactory;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
@@ -26,26 +28,25 @@ import net.minecraft.world.World;
 
 public class ProtectionListeners {
 
-	private static final Text NO_PERMISSION_MESSAGE = Text.literal("No tienes permiso para hacer esto aquí.");
-	private static final Text NO_ISLAND_MESSAGE = Text.literal("Esta zona no pertenece a ninguna isla.");
-	private static final Text RESERVED_PLOT_MESSAGE =
-			Text.literal("Esta zona está reservada para una futura ampliación de la isla.");
-
 	private ProtectionListeners() {
 	}
 
 	// Only meaningful to call after an action was denied: outside the islands dimension,
 	// AccessController always allows, so a deny here always means we're inside it. Mirrors
-	// AccessControllerImpl's classification purely to pick the right message.
-	private static Text denyMessage(BlockPos pos) {
+	// AccessControllerImpl's classification purely to pick the right message. Was 3 static final
+	// Text constants built once at class-load time — turned into a per-call method so each one can
+	// be picked per the RECEIVING player's own client language (see ServerLang) instead of a single
+	// server-wide value baked in at startup.
+	private static Text denyMessage(BlockPos pos, ServerPlayerEntity player) {
 		Island island = IslandCoreMod.ISLAND_REGISTRY.getIslandAt(pos).orElse(null);
 		if (island == null) {
-			return NO_ISLAND_MESSAGE;
+			return ServerLang.of(player, "Esta zona no pertenece a ninguna isla.", "This area doesn't belong to any island.");
 		}
 		if (!island.getBounds().contains(pos) && !isBeyondWorldHeightLimit(pos)) {
-			return RESERVED_PLOT_MESSAGE;
+			return ServerLang.of(player, "Esta zona está reservada para una futura ampliación de la isla.",
+					"This area is reserved for a future island expansion.");
 		}
-		return NO_PERMISSION_MESSAGE;
+		return ServerLang.of(player, "No tienes permiso para hacer esto aquí.", "You don't have permission to do this here.");
 	}
 
 	// Y=320 (one above the highest buildable layer) and Y=-64 (the world's own bottom — see
@@ -74,7 +75,7 @@ public class ProtectionListeners {
 			return true;
 		}
 
-		DeniedActionThrottler.notifyDenied(player, denyMessage(pos));
+		DeniedActionThrottler.notifyDenied(player, denyMessage(pos, (ServerPlayerEntity) player));
 		return false;
 	}
 
@@ -106,7 +107,7 @@ public class ProtectionListeners {
 			return ActionResult.PASS;
 		}
 
-		DeniedActionThrottler.notifyDenied(player, denyMessage(checkedPos));
+		DeniedActionThrottler.notifyDenied(player, denyMessage(checkedPos, (ServerPlayerEntity) player));
 		return ActionResult.FAIL;
 	}
 
@@ -119,7 +120,7 @@ public class ProtectionListeners {
 			return ActionResult.PASS;
 		}
 
-		DeniedActionThrottler.notifyDenied(player, denyMessage(entity.getBlockPos()));
+		DeniedActionThrottler.notifyDenied(player, denyMessage(entity.getBlockPos(), (ServerPlayerEntity) player));
 		return ActionResult.FAIL;
 	}
 
@@ -132,7 +133,7 @@ public class ProtectionListeners {
 			return ActionResult.PASS;
 		}
 
-		DeniedActionThrottler.notifyDenied(player, denyMessage(entity.getBlockPos()));
+		DeniedActionThrottler.notifyDenied(player, denyMessage(entity.getBlockPos(), (ServerPlayerEntity) player));
 		return ActionResult.FAIL;
 	}
 }

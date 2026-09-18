@@ -9,10 +9,10 @@ import com.skyframework.islandcore.api.network.ActionOutcome;
 import com.skyframework.islandcore.api.network.ActionReason;
 import com.skyframework.islandcore.island.model.IslandMember;
 import com.skyframework.islandcore.island.model.IslandRole;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
 
 import java.time.Instant;
 import java.util.EnumSet;
@@ -48,8 +48,9 @@ public final class MembershipService {
 
 		ServerPlayerEntity targetPlayer = server.getPlayerManager().getPlayer(targetUuid);
 		if (targetPlayer != null) {
-			targetPlayer.sendMessage(Text.literal(inviter.getGameProfile().getName()
-					+ " te ha invitado a su isla. Usa /island accept en los próximos 5 minutos para unirte."), false);
+			targetPlayer.sendMessage(ServerLang.of(targetPlayer,
+					inviter.getGameProfile().getName() + " te ha invitado a su isla. Usa /island accept en los próximos 5 minutos para unirte.",
+					inviter.getGameProfile().getName() + " has invited you to their island. Use /island accept within the next 5 minutes to join."), false);
 		}
 
 		return ActionOutcome.ok(targetPlayer != null);
@@ -93,8 +94,9 @@ public final class MembershipService {
 		Island island = maybeIsland.get();
 		ServerPlayerEntity owner = server.getPlayerManager().getPlayer(island.getOwnerUuid());
 		if (owner != null) {
-			owner.sendMessage(Text.literal(
-					player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a tu isla."), false);
+			owner.sendMessage(ServerLang.of(owner,
+					player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a tu isla.",
+					player.getGameProfile().getName() + " has accepted your invitation and joined your island."), false);
 		}
 
 		return ActionOutcome.ok(island);
@@ -113,8 +115,9 @@ public final class MembershipService {
 		Island island = maybeIsland.get();
 		ServerPlayerEntity owner = server.getPlayerManager().getPlayer(island.getOwnerUuid());
 		if (owner != null) {
-			owner.sendMessage(Text.literal(
-					player.getGameProfile().getName() + " ha rechazado tu invitación."), false);
+			owner.sendMessage(ServerLang.of(owner,
+					player.getGameProfile().getName() + " ha rechazado tu invitación.",
+					player.getGameProfile().getName() + " has declined your invitation."), false);
 		}
 
 		return ActionOutcome.ok();
@@ -271,8 +274,9 @@ public final class MembershipService {
 		}
 
 		if (targetPlayer != null) {
-			targetPlayer.sendMessage(Text.literal(
-					"Has sido expulsado de la isla de " + executor.getGameProfile().getName() + "."), false);
+			targetPlayer.sendMessage(ServerLang.of(targetPlayer,
+					"Has sido expulsado de la isla de " + executor.getGameProfile().getName() + ".",
+					"You've been kicked from " + executor.getGameProfile().getName() + "'s island."), false);
 		}
 
 		return ActionOutcome.ok();

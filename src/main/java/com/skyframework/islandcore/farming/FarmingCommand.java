@@ -4,13 +4,13 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 
 import com.skyframework.islandcore.IslandCoreMod;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
 
 // "/farming", open to every player (no OP required).
 public class FarmingCommand {
@@ -30,7 +30,8 @@ public class FarmingCommand {
 		ServerPlayerEntity player = source.getPlayerOrThrow();
 
 		if (!IslandCoreMod.FARMING_CONFIG.isEnabled()) {
-			source.sendError(Text.literal("El comando /farming está desactivado en este servidor."));
+			source.sendError(ServerLang.of(player,
+					"El comando /farming está desactivado en este servidor.", "The /farming command is disabled on this server."));
 			return 0;
 		}
 

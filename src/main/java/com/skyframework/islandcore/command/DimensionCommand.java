@@ -12,6 +12,7 @@ import com.skyframework.islandcore.dimension.model.DimensionDefinition;
 import com.skyframework.islandcore.dimension.model.DimensionGeneratorStyle;
 import com.skyframework.islandcore.dimension.vanilla.PendingVanillaReset;
 import com.skyframework.islandcore.dimension.vanilla.VanillaResetService;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
@@ -184,9 +185,12 @@ public class DimensionCommand {
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("¿Seguro que quieres borrar la dimensión " + id
+		source.sendFeedback(() -> ServerLang.of(player, "¿Seguro que quieres borrar la dimensión " + id
 				+ "? Esta acción no se puede deshacer. Usa /dimension delete " + id.getPath()
-				+ " confirm en los próximos 30 segundos para confirmar."), false);
+				+ " confirm en los próximos 30 segundos para confirmar.",
+				"Are you sure you want to delete dimension " + id
+				+ "? This action cannot be undone. Use /dimension delete " + id.getPath()
+				+ " confirm within the next 30 seconds to confirm."), false);
 
 		return 1;
 	}
@@ -198,11 +202,13 @@ public class DimensionCommand {
 
 		boolean confirmed = IslandCoreMod.DIMENSION_REGISTRY.confirmDeletion(id, player.getUuid());
 		if (!confirmed) {
-			source.sendError(Text.literal("No hay ninguna solicitud de borrado pendiente para " + id + " (o ha expirado)."));
+			source.sendError(ServerLang.of(player, "No hay ninguna solicitud de borrado pendiente para " + id + " (o ha expirado).",
+					"There is no pending deletion request for " + id + " (or it has expired)."));
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("La dimensión " + id + " se está borrando..."), false);
+		source.sendFeedback(() -> ServerLang.of(player, "La dimensión " + id + " se está borrando...",
+				"Dimension " + id + " is being deleted..."), false);
 
 		return 1;
 	}
@@ -221,9 +227,12 @@ public class DimensionCommand {
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("¿Seguro que quieres regenerar la dimensión " + id
+		source.sendFeedback(() -> ServerLang.of(player, "¿Seguro que quieres regenerar la dimensión " + id
 				+ " con la semilla " + newSeed + "? Todo lo construido en ella se perderá. Usa /dimension regenerate "
-				+ id.getPath() + " confirm en los próximos 30 segundos para confirmar."), false);
+				+ id.getPath() + " confirm en los próximos 30 segundos para confirmar.",
+				"Are you sure you want to regenerate dimension " + id
+				+ " with seed " + newSeed + "? Everything built in it will be lost. Use /dimension regenerate "
+				+ id.getPath() + " confirm within the next 30 seconds to confirm."), false);
 
 		return 1;
 	}
@@ -235,11 +244,13 @@ public class DimensionCommand {
 
 		boolean confirmed = IslandCoreMod.DIMENSION_REGISTRY.confirmRegeneration(id, player.getUuid());
 		if (!confirmed) {
-			source.sendError(Text.literal("No hay ninguna solicitud de regeneración pendiente para " + id + " (o ha expirado)."));
+			source.sendError(ServerLang.of(player, "No hay ninguna solicitud de regeneración pendiente para " + id + " (o ha expirado).",
+					"There is no pending regeneration request for " + id + " (or it has expired)."));
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("La dimensión " + id + " se está regenerando..."), false);
+		source.sendFeedback(() -> ServerLang.of(player, "La dimensión " + id + " se está regenerando...",
+				"Dimension " + id + " is being regenerated..."), false);
 
 		return 1;
 	}
@@ -256,9 +267,12 @@ public class DimensionCommand {
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("¿Seguro que quieres resetear la dimensión vanilla " + dimensionKey
+		source.sendFeedback(() -> ServerLang.of(player, "¿Seguro que quieres resetear la dimensión vanilla " + dimensionKey
 				+ "? Esta acción no se puede deshacer. Usa /dimension vanilla regenerate " + dimensionKey
-				+ " confirm en los próximos 30 segundos para confirmar."), false);
+				+ " confirm en los próximos 30 segundos para confirmar.",
+				"Are you sure you want to reset the vanilla dimension " + dimensionKey
+				+ "? This action cannot be undone. Use /dimension vanilla regenerate " + dimensionKey
+				+ " confirm within the next 30 seconds to confirm."), false);
 
 		return 1;
 	}
@@ -277,14 +291,19 @@ public class DimensionCommand {
 		}
 
 		if (!confirmed) {
-			source.sendError(Text.literal("No hay ninguna solicitud de reseteo pendiente para " + dimensionKey + " (o ha expirado)."));
+			source.sendError(ServerLang.of(player, "No hay ninguna solicitud de reseteo pendiente para " + dimensionKey + " (o ha expirado).",
+					"There is no pending reset request for " + dimensionKey + " (or it has expired)."));
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("Reseteo de " + dimensionKey + " añadido a la cola de reseteos pendientes"
+		source.sendFeedback(() -> ServerLang.of(player, "Reseteo de " + dimensionKey + " añadido a la cola de reseteos pendientes"
 				+ " (junto a cualquier otro ya solicitado, si lo hay). Se aplicará en el PRÓXIMO reinicio del servidor:"
 				+ " el mod no puede reiniciarlo por sí mismo, así que debes pararlo y volver a arrancarlo tú mismo"
-				+ " cuando quieras que se apliquen todos los reseteos en cola."), false);
+				+ " cuando quieras que se apliquen todos los reseteos en cola.",
+				"Reset of " + dimensionKey + " added to the pending reset queue"
+				+ " (along with any others already requested, if any). It will be applied on the NEXT server restart:"
+				+ " the mod cannot restart itself, so you must stop it and start it back up yourself"
+				+ " whenever you want all queued resets to be applied."), false);
 
 		return 1;
 	}

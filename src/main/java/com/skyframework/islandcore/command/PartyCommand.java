@@ -9,6 +9,7 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.party.lifecycle.PartyDisbandRequests;
 import com.skyframework.islandcore.party.model.PartyData;
+import com.skyframework.islandcore.util.ServerLang;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 
@@ -73,7 +74,7 @@ public class PartyCommand {
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("Party \"" + party.getName() + "\" creada. Eres el líder."), false);
+		source.sendFeedback(() -> ServerLang.of(player, "Party \"" + party.getName() + "\" creada. Eres el líder.", "Party \"" + party.getName() + "\" created. You are the leader."), false);
 		return 1;
 	}
 
@@ -97,14 +98,19 @@ public class PartyCommand {
 
 		ServerPlayerEntity targetPlayer = source.getServer().getPlayerManager().getPlayer(targetProfile.getId());
 		if (targetPlayer != null) {
-			targetPlayer.sendMessage(Text.literal(player.getGameProfile().getName()
+			targetPlayer.sendMessage(ServerLang.of(targetPlayer, player.getGameProfile().getName()
 					+ " te ha invitado a su party \"" + party.getName()
-					+ "\". Usa /party accept en los próximos 5 minutos para unirte."), false);
-			source.sendFeedback(() -> Text.literal("Invitación enviada a " + targetProfile.getName() + "."), false);
+					+ "\". Usa /party accept en los próximos 5 minutos para unirte.",
+					player.getGameProfile().getName()
+					+ " has invited you to their party \"" + party.getName()
+					+ "\". Use /party accept within the next 5 minutes to join."), false);
+			source.sendFeedback(() -> ServerLang.of(player, "Invitación enviada a " + targetProfile.getName() + ".", "Invitation sent to " + targetProfile.getName() + "."), false);
 		} else {
-			source.sendFeedback(() -> Text.literal(
+			source.sendFeedback(() -> ServerLang.of(player,
 					"Invitación registrada para " + targetProfile.getName()
-							+ " (no está conectado ahora mismo, pero podrá aceptarla si entra en los próximos 5 minutos)."), false);
+							+ " (no está conectado ahora mismo, pero podrá aceptarla si entra en los próximos 5 minutos).",
+					"Invitation registered for " + targetProfile.getName()
+							+ " (they are not connected right now, but will be able to accept it if they join within the next 5 minutes)."), false);
 		}
 
 		return 1;
@@ -123,17 +129,18 @@ public class PartyCommand {
 		}
 
 		if (maybeParty.isEmpty()) {
-			source.sendError(Text.literal("No tienes ninguna invitación de party pendiente (o ha caducado)."));
+			source.sendError(ServerLang.of(player, "No tienes ninguna invitación de party pendiente (o ha caducado).", "You do not have any pending party invitation (or it has expired)."));
 			return 0;
 		}
 		PartyData party = maybeParty.get();
 
-		source.sendFeedback(() -> Text.literal("¡Te has unido a la party \"" + party.getName() + "\"!"), false);
+		source.sendFeedback(() -> ServerLang.of(player, "¡Te has unido a la party \"" + party.getName() + "\"!", "You have joined the party \"" + party.getName() + "\"!"), false);
 
 		ServerPlayerEntity leader = source.getServer().getPlayerManager().getPlayer(party.getLeaderUuid());
 		if (leader != null) {
-			leader.sendMessage(Text.literal(
-					player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a la party."), false);
+			leader.sendMessage(ServerLang.of(leader,
+					player.getGameProfile().getName() + " ha aceptado tu invitación y se ha unido a la party.",
+					player.getGameProfile().getName() + " has accepted your invitation and joined the party."), false);
 		}
 
 		return 1;
@@ -145,7 +152,7 @@ public class PartyCommand {
 
 		Optional<PartyData> maybeParty = IslandCoreMod.PARTY_REGISTRY.getPartyOf(player.getUuid());
 		if (maybeParty.isEmpty()) {
-			source.sendError(Text.literal("No perteneces a ninguna party."));
+			source.sendError(ServerLang.of(player, "No perteneces a ninguna party.", "You do not belong to any party."));
 			return 0;
 		}
 		PartyData party = maybeParty.get();
@@ -154,14 +161,15 @@ public class PartyCommand {
 		boolean disbanded = IslandCoreMod.PARTY_REGISTRY.leaveParty(player.getUuid());
 
 		if (disbanded) {
-			source.sendFeedback(() -> Text.literal("Has salido de la party \"" + party.getName() + "\". Al ser el único miembro, se ha disuelto."), false);
+			source.sendFeedback(() -> ServerLang.of(player, "Has salido de la party \"" + party.getName() + "\". Al ser el único miembro, se ha disuelto.", "You have left the party \"" + party.getName() + "\". Since you were the only member, it has been disbanded."), false);
 		} else if (wasLeader) {
 			Optional<PartyData> updated = IslandCoreMod.PARTY_REGISTRY.getParty(party.getPartyId());
 			String newLeaderName = updated.map(p -> resolveName(source.getServer(), p.getLeaderUuid())).orElse("otro miembro");
-			source.sendFeedback(() -> Text.literal(
-					"Has salido de la party \"" + party.getName() + "\". El liderazgo ha pasado a " + newLeaderName + "."), false);
+			source.sendFeedback(() -> ServerLang.of(player,
+					"Has salido de la party \"" + party.getName() + "\". El liderazgo ha pasado a " + newLeaderName + ".",
+					"You have left the party \"" + party.getName() + "\". Leadership has passed to " + newLeaderName + "."), false);
 		} else {
-			source.sendFeedback(() -> Text.literal("Has salido de la party \"" + party.getName() + "\"."), false);
+			source.sendFeedback(() -> ServerLang.of(player, "Has salido de la party \"" + party.getName() + "\".", "You have left the party \"" + party.getName() + "\"."), false);
 		}
 
 		return 1;
@@ -179,11 +187,11 @@ public class PartyCommand {
 		PartyData party = maybeParty.get();
 
 		if (targetProfile.getId().equals(player.getUuid())) {
-			source.sendError(Text.literal("No puedes expulsarte a ti mismo. Usa /party leave o /party disband."));
+			source.sendError(ServerLang.of(player, "No puedes expulsarte a ti mismo. Usa /party leave o /party disband.", "You cannot kick yourself. Use /party leave or /party disband."));
 			return 0;
 		}
 		if (!party.getMembers().contains(targetProfile.getId())) {
-			source.sendError(Text.literal(targetProfile.getName() + " no es miembro de tu party."));
+			source.sendError(ServerLang.of(player, targetProfile.getName() + " no es miembro de tu party.", targetProfile.getName() + " is not a member of your party."));
 			return 0;
 		}
 
@@ -191,10 +199,10 @@ public class PartyCommand {
 
 		ServerPlayerEntity targetPlayer = source.getServer().getPlayerManager().getPlayer(targetProfile.getId());
 		if (targetPlayer != null) {
-			targetPlayer.sendMessage(Text.literal("Has sido expulsado de la party \"" + party.getName() + "\"."), false);
+			targetPlayer.sendMessage(ServerLang.of(targetPlayer, "Has sido expulsado de la party \"" + party.getName() + "\".", "You have been kicked from the party \"" + party.getName() + "\"."), false);
 		}
 
-		source.sendFeedback(() -> Text.literal(targetProfile.getName() + " ha sido expulsado de la party."), false);
+		source.sendFeedback(() -> ServerLang.of(player, targetProfile.getName() + " ha sido expulsado de la party.", targetProfile.getName() + " has been kicked from the party."), false);
 		return 1;
 	}
 
@@ -216,7 +224,7 @@ public class PartyCommand {
 			return 0;
 		}
 
-		source.sendFeedback(() -> Text.literal("Party renombrada a \"" + newName + "\"."), false);
+		source.sendFeedback(() -> ServerLang.of(player, "Party renombrada a \"" + newName + "\".", "Party renamed to \"" + newName + "\"."), false);
 		return 1;
 	}
 
@@ -231,9 +239,11 @@ public class PartyCommand {
 		PartyData party = maybeParty.get();
 
 		PartyDisbandRequests.request(party.getPartyId());
-		source.sendFeedback(() -> Text.literal(
+		source.sendFeedback(() -> ((net.minecraft.text.MutableText) ServerLang.of(player,
 				"¿Seguro que quieres disolver la party \"" + party.getName() + "\"? Usa /party disband confirm en los próximos "
-						+ PartyDisbandRequests.TIMEOUT.toSeconds() + " segundos para confirmar.").formatted(Formatting.RED), false);
+						+ PartyDisbandRequests.TIMEOUT.toSeconds() + " segundos para confirmar.",
+				"Are you sure you want to disband the party \"" + party.getName() + "\"? Use /party disband confirm within the next "
+						+ PartyDisbandRequests.TIMEOUT.toSeconds() + " seconds to confirm.")).formatted(Formatting.RED), false);
 		return 1;
 	}
 
@@ -248,7 +258,7 @@ public class PartyCommand {
 		PartyData party = maybeParty.get();
 
 		if (!PartyDisbandRequests.confirm(party.getPartyId())) {
-			source.sendError(Text.literal("No hay ninguna solicitud de disolución pendiente (o ha caducado). Usa /party disband primero."));
+			source.sendError(ServerLang.of(player, "No hay ninguna solicitud de disolución pendiente (o ha caducado). Usa /party disband primero.", "There is no pending disband request (or it has expired). Use /party disband first."));
 			return 0;
 		}
 
@@ -259,12 +269,12 @@ public class PartyCommand {
 			}
 			ServerPlayerEntity member = server.getPlayerManager().getPlayer(memberUuid);
 			if (member != null) {
-				member.sendMessage(Text.literal("La party \"" + party.getName() + "\" ha sido disuelta por su líder."), false);
+				member.sendMessage(ServerLang.of(member, "La party \"" + party.getName() + "\" ha sido disuelta por su líder.", "The party \"" + party.getName() + "\" has been disbanded by its leader."), false);
 			}
 		}
 
 		IslandCoreMod.PARTY_REGISTRY.disbandParty(party.getPartyId());
-		source.sendFeedback(() -> Text.literal("Party \"" + party.getName() + "\" disuelta."), false);
+		source.sendFeedback(() -> ServerLang.of(player, "Party \"" + party.getName() + "\" disuelta.", "Party \"" + party.getName() + "\" disbanded."), false);
 		return 1;
 	}
 
@@ -274,20 +284,20 @@ public class PartyCommand {
 
 		Optional<PartyData> maybeParty = IslandCoreMod.PARTY_REGISTRY.getPartyOf(player.getUuid());
 		if (maybeParty.isEmpty()) {
-			source.sendError(Text.literal("No perteneces a ninguna party."));
+			source.sendError(ServerLang.of(player, "No perteneces a ninguna party.", "You do not belong to any party."));
 			return 0;
 		}
 		PartyData party = maybeParty.get();
 		MinecraftServer server = source.getServer();
 
-		source.sendFeedback(() -> Text.literal("=== Party: " + party.getName() + " ===").formatted(Formatting.BOLD, Formatting.AQUA), false);
-		source.sendFeedback(() -> Text.literal("Líder: " + resolveName(server, party.getLeaderUuid())).formatted(Formatting.GOLD), false);
+		source.sendFeedback(() -> ((net.minecraft.text.MutableText) ServerLang.of(player, "=== Party: " + party.getName() + " ===", "=== Party: " + party.getName() + " ===")).formatted(Formatting.BOLD, Formatting.AQUA), false);
+		source.sendFeedback(() -> ((net.minecraft.text.MutableText) ServerLang.of(player, "Líder: " + resolveName(server, party.getLeaderUuid()), "Leader: " + resolveName(server, party.getLeaderUuid()))).formatted(Formatting.GOLD), false);
 
-		source.sendFeedback(() -> Text.literal("Miembros (" + party.getMembers().size() + "):").formatted(Formatting.BOLD, Formatting.GOLD), false);
+		source.sendFeedback(() -> ((net.minecraft.text.MutableText) ServerLang.of(player, "Miembros (" + party.getMembers().size() + "):", "Members (" + party.getMembers().size() + "):")).formatted(Formatting.BOLD, Formatting.GOLD), false);
 		for (UUID memberUuid : party.getMembers()) {
 			String name = resolveName(server, memberUuid);
 			boolean isLeader = memberUuid.equals(party.getLeaderUuid());
-			source.sendFeedback(() -> Text.literal("- " + name + (isLeader ? " (líder)" : "")), false);
+			source.sendFeedback(() -> ServerLang.of(player, "- " + name + (isLeader ? " (líder)" : ""), "- " + name + (isLeader ? " (leader)" : "")), false);
 		}
 
 		return 1;
