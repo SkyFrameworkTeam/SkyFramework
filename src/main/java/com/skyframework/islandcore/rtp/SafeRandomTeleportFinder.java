@@ -1,10 +1,10 @@
 package com.skyframework.islandcore.rtp;
 
 import com.skyframework.islandcore.teleport.SafeLandingChecker;
+import com.skyframework.islandcore.teleport.SafeLocationFinder;
 
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.Heightmap;
 
 import java.util.Optional;
 import java.util.Random;
@@ -30,7 +30,12 @@ public class SafeRandomTeleportFinder {
 			// real terrain, not an empty/ungenerated chunk. Accepted as a one-off synchronous cost.
 			world.getChunk(x >> 4, z >> 4);
 
-			int topY = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+			// Shared with resolveSafeLanding's own ground detection (Sprint "aterrizaje seguro"
+			// investigation, part 1): the raw MOTION_BLOCKING_NO_LEAVES heightmap this used to call
+			// directly finds the bedrock ceiling's own top face in any has_ceiling=true dimension
+			// (e.g. NETHER_LIKE), not the playable interior below it — confirmed with real /rtp
+			// samples all landing at y=128 in a roofed test dimension. resolveTopY is ceiling-aware.
+			int topY = SafeLocationFinder.resolveTopY(world, x, z);
 			BlockPos feet = new BlockPos(x, topY, z);
 
 			if (!SafeLandingChecker.isSafe(world, feet)) {

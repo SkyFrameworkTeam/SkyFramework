@@ -96,6 +96,11 @@ public final class ActionReason {
 	// "No se ha podido encontrar un lugar seguro. Inténtalo de nuevo." (TeleportManagerImpl#requestRtp)
 	public static final String RTP_NO_SAFE_LOCATION = "rtp_no_safe_location";
 
+	// No safe spot found near the target dimension's own landing point, AND neither the player's own
+	// island home nor the Spawn island's home was safe either — the player is left where they were,
+	// not moved (TeleportManagerImpl#requestFarming/requestDimensionTeleport).
+	public static final String DIMENSION_NO_SAFE_LOCATION = "dimension_no_safe_location";
+
 	// Admin network block (island list/detail/delete, Spawn management, Dimension Manager, vanilla
 	// reset queue). Unlike every constant above, these carry an "error." prefix on the wire — this
 	// block is a distinct, newer packet family with its own client-side lookup convention; the

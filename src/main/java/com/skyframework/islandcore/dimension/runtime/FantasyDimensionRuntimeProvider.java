@@ -18,6 +18,8 @@ import net.minecraft.world.biome.source.BiomeSource;
 import net.minecraft.world.biome.source.MultiNoiseBiomeSource;
 import net.minecraft.world.biome.source.MultiNoiseBiomeSourceParameterList;
 import net.minecraft.world.biome.source.TheEndBiomeSource;
+import net.minecraft.world.dimension.DimensionType;
+import net.minecraft.world.dimension.DimensionTypes;
 import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.chunk.ChunkGeneratorSettings;
 import net.minecraft.world.gen.chunk.FlatChunkGenerator;
@@ -62,8 +64,32 @@ public class FantasyDimensionRuntimeProvider implements DimensionRuntimeProvider
 				.setSeed(definition.getSeed())
 				.setGenerator(createChunkGenerator(definition.getGeneratorStyle(), server));
 
+		// Root cause of NETHER_LIKE's broken terrain (confirmed by comparing the actual JSON
+		// values): without this, every style fell through to RuntimeWorldConfig's own default
+		// ("fantasy:default", coordinate_scale=1.0/has_ceiling=false/height=0..256). The real
+		// Nether dimension_type uses coordinate_scale=8.0 — applying ChunkGeneratorSettings.NETHER's
+		// noise router at the wrong 1:1 scale is what produced the sparse/broken terrain players
+		// landed in. END_LIKE happened to look fine regardless: the real End dimension_type's own
+		// coordinate_scale/min_y/height already match Fantasy's default exactly, so only its
+		// generation-irrelevant flags (has_skylight, natural, etc.) were ever wrong. OVERWORLD_LIKE
+		// was never reported broken, but its real height range (-64..320) also didn't match the
+		// default (0..256) — fixed here too, not just Nether, since the same underlying gap applies.
+		// VOID_FLAT deliberately untouched: it isn't meant to look like any specific vanilla
+		// dimension, and islandcore:islands (this project's own equivalent) already uses its own
+		// custom islandcore:islands_type, not any of these three.
+		dimensionTypeKey(definition.getGeneratorStyle()).ifPresent(config::setDimensionType);
+
 		RuntimeWorldHandle handle = Fantasy.get(server).getOrOpenPersistentWorld(definition.getId(), config);
 		return handle.asWorld();
+	}
+
+	private static Optional<RegistryKey<DimensionType>> dimensionTypeKey(DimensionGeneratorStyle style) {
+		return switch (style) {
+			case OVERWORLD_LIKE -> Optional.of(DimensionTypes.OVERWORLD);
+			case NETHER_LIKE -> Optional.of(DimensionTypes.THE_NETHER);
+			case END_LIKE -> Optional.of(DimensionTypes.THE_END);
+			case VOID_FLAT -> Optional.empty();
+		};
 	}
 
 	@Override

@@ -18,7 +18,15 @@ class PendingTeleport {
 		// Any DIMENSION_REGISTRY dimension reached through the dynamic teleports section, other
 		// than the one matching FarmingConfig's own target (that one still uses Kind.FARMING — see
 		// TeleportManagerImpl#requestDimensionTeleport).
-		DIMENSION
+		DIMENSION,
+		// Neither the target dimension's own landing point nor a nearby safe spot could be found
+		// (see TeleportManagerImpl#resolveDynamicDimensionLanding) — the player was bounced to their
+		// own island's home or the Spawn island's home instead, as a safety net, same "no cooldown,
+		// this wasn't a deliberate action" reasoning as VoidRescueListener. Kept distinct from
+		// Kind.HOME/Kind.SPAWN so completeTeleport doesn't charge either cooldown for an involuntary
+		// rescue.
+		RESCUE_HOME,
+		RESCUE_SPAWN
 	}
 
 	final UUID playerUuid;

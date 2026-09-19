@@ -2,6 +2,7 @@ package com.skyframework.islandcore.dimension.registry;
 
 import com.skyframework.islandcore.IslandCoreMod;
 import com.skyframework.islandcore.api.island.Island;
+import com.skyframework.islandcore.dimension.generation.EndSpawnPlatformGenerator;
 import com.skyframework.islandcore.dimension.model.DimensionData;
 import com.skyframework.islandcore.dimension.model.DimensionDefinition;
 import com.skyframework.islandcore.dimension.model.DimensionGeneratorStyle;
@@ -89,7 +90,8 @@ public class DimensionRegistryImpl implements DimensionRegistry {
 			// dimension is re-materialized right here, on every boot, rather than leaving that up
 			// to a separate step that might not run.
 			if (server != null) {
-				runtimeProvider.createOrLoadWorld(dimension, server);
+				ServerWorld world = runtimeProvider.createOrLoadWorld(dimension, server);
+				ensureEndSpawnPlatform(dimension, world);
 			}
 		}
 
@@ -142,7 +144,8 @@ public class DimensionRegistryImpl implements DimensionRegistry {
 		saveIfStorageReady(dimension);
 
 		if (server != null) {
-			runtimeProvider.createOrLoadWorld(dimension, server);
+			ServerWorld world = runtimeProvider.createOrLoadWorld(dimension, server);
+			ensureEndSpawnPlatform(dimension, world);
 		}
 
 		return dimension;
@@ -335,7 +338,8 @@ public class DimensionRegistryImpl implements DimensionRegistry {
 			dimension.setSeed(removal.newSeedIfRegenerating);
 			dimension.setState(DimensionState.ACTIVE);
 			saveIfStorageReady(dimension);
-			runtimeProvider.createOrLoadWorld(dimension, server);
+			ServerWorld world = runtimeProvider.createOrLoadWorld(dimension, server);
+			ensureEndSpawnPlatform(dimension, world);
 		} else {
 			if (storage != null) {
 				storage.delete(id);
@@ -384,6 +388,22 @@ public class DimensionRegistryImpl implements DimensionRegistry {
 		if (storage != null) {
 			storage.save(dimension);
 		}
+	}
+
+	// Called every time an END_LIKE dimension's world becomes live (fresh creation, every server
+	// boot's re-materialization, and after a regeneration) rather than only once at creation — cheap
+	// (9 blocks) and idempotent, so it also self-heals any pre-existing END_LIKE dimension that was
+	// created before this platform existed, or one where the platform got griefed away. resolveSafeLanding's
+	// own step1 (direct spawnPos check) then always succeeds immediately for world.getSpawnPos(), no
+	// fallback search needed — the far-from-spawn "last known position" case is untouched by this.
+	private void ensureEndSpawnPlatform(DimensionData dimension, ServerWorld world) {
+		if (dimension.getGeneratorStyle() != DimensionGeneratorStyle.END_LIKE || world == null) {
+			return;
+		}
+
+		BlockPos spawnPos = world.getSpawnPos();
+		world.getChunk(spawnPos.getX() >> 4, spawnPos.getZ() >> 4);
+		EndSpawnPlatformGenerator.generate(world, spawnPos);
 	}
 
 	// lastNotifiedSecond tracks the countdown value last shown on the action bar, so
