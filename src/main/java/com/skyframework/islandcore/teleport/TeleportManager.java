@@ -30,6 +30,12 @@ public interface TeleportManager {
 	// spawn point, safe-landing-corrected, on a first visit).
 	ActionOutcome<Void> requestDimensionTeleport(ServerPlayerEntity player, Identifier dimensionId);
 
+	// Fixed teleport to the real vanilla minecraft:overworld dimension (not a DIMENSION_REGISTRY
+	// entry) — TeleportsScreen's "Overworld" button. Same safe-landing/fallback mechanism as
+	// requestDimensionTeleport, anchored at the player's last known Overworld position (or the
+	// world's own spawn point on a first use), no cooldown.
+	ActionOutcome<Void> requestOverworldTeleport(ServerPlayerEntity player);
+
 	// Unlike the three above, /rtp is a single synchronous action (no warmup countdown), so this
 	// one follows the same "pure outcome, caller formats every message" convention as
 	// IslandActionService/MembershipService instead. data carries the remaining cooldown in

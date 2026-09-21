@@ -444,6 +444,7 @@ public final class ServerPacketHandlers {
 					: ActionOutcome.fail(ActionReason.SPAWN_DISABLED);
 			case RTP -> IslandCoreMod.TELEPORT_MANAGER.requestRtp(player);
 			case DIMENSION -> dispatchDimensionTeleport(player, payload.dimensionId());
+			case OVERWORLD -> IslandCoreMod.TELEPORT_MANAGER.requestOverworldTeleport(player);
 		};
 	}
 

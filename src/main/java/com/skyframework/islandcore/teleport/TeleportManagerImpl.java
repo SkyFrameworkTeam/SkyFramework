@@ -246,6 +246,37 @@ public class TeleportManagerImpl implements TeleportManager {
 		return ActionOutcome.ok();
 	}
 
+	@Override
+	public ActionOutcome<Void> requestOverworldTeleport(ServerPlayerEntity player) {
+		UUID playerUuid = player.getUuid();
+
+		ServerWorld world = server != null ? server.getWorld(World.OVERWORLD) : null;
+		if (world == null) {
+			player.sendMessage(ServerLang.of(player, "El Overworld no está disponible ahora mismo.", "The Overworld isn't available right now."), false);
+			return ActionOutcome.fail(ActionReason.DIMENSION_UNAVAILABLE);
+		}
+
+		// Same anchor idiom as requestDimensionTeleport: resume where the player last stood in the
+		// Overworld, or its own spawn point on a first use.
+		BlockPos anchor = IslandCoreMod.PLAYER_LAST_POSITION_STORE.getLastPosition(playerUuid, World.OVERWORLD.getValue())
+				.orElseGet(world::getSpawnPos);
+		Optional<LandingResult> landing = resolveDynamicDimensionLanding(player, world, World.OVERWORLD, anchor);
+		if (landing.isEmpty()) {
+			player.sendMessage(ServerLang.of(player,
+					"No se ha podido encontrar ningún lugar seguro donde teletransportarte.",
+					"Couldn't find any safe location to teleport you to."), false);
+			return ActionOutcome.fail(ActionReason.DIMENSION_NO_SAFE_LOCATION);
+		}
+
+		LandingResult resolvedLanding = landing.get();
+		pending.put(playerUuid, new PendingTeleport(
+				playerUuid, resolvedLanding.dimension(), resolvedLanding.pos(), player.getPos(), HOME_WARMUP_TICKS,
+				kindFor(resolvedLanding.fallback(), PendingTeleport.Kind.OVERWORLD)));
+
+		player.sendMessage(ServerLang.of(player, "Preparando teletransporte al Overworld. No te muevas ni recibas daño.", "Preparing teleport to the Overworld. Don't move or take damage."), false);
+		return ActionOutcome.ok();
+	}
+
 	private static PendingTeleport.Kind kindFor(FallbackKind fallback, PendingTeleport.Kind targetKind) {
 		return switch (fallback) {
 			case TARGET -> targetKind;
@@ -563,6 +594,9 @@ public class TeleportManagerImpl implements TeleportManager {
 				lastHomeAt.put(teleport.playerUuid, Instant.now());
 				player.sendMessage(ServerLang.of(player, "¡Teletransportado a tu isla!", "Teleported to your island!"), false);
 			}
+			// No cooldown map to update, same as DIMENSION — a fixed vanilla destination, but not a
+			// DIMENSION_REGISTRY entry, so it doesn't reuse the DIMENSION case's display-name lookup.
+			case OVERWORLD -> player.sendMessage(ServerLang.of(player, "¡Teletransportado al Overworld!", "Teleported to the Overworld!"), false);
 		}
 	}
 

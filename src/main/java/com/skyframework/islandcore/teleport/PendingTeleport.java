@@ -26,7 +26,11 @@ class PendingTeleport {
 		// Kind.HOME/Kind.SPAWN so completeTeleport doesn't charge either cooldown for an involuntary
 		// rescue.
 		RESCUE_HOME,
-		RESCUE_SPAWN
+		RESCUE_SPAWN,
+		// Fixed teleport to the real vanilla minecraft:overworld dimension (TeleportsScreen's
+		// "Overworld" button) — kept distinct from DIMENSION since it's never a DIMENSION_REGISTRY
+		// entry, so completeTeleport's DIMENSION case display-name lookup would never find it.
+		OVERWORLD
 	}
 
 	final UUID playerUuid;

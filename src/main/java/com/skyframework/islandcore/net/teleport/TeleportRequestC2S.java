@@ -34,7 +34,7 @@ import java.util.Optional;
 public record TeleportRequestC2S(Type type, Optional<String> dimensionId) implements CustomPayload {
 
 	public enum Type {
-		HOME, SPAWN, RTP, DIMENSION
+		HOME, SPAWN, RTP, DIMENSION, OVERWORLD
 	}
 
 	public static final CustomPayload.Id<TeleportRequestC2S> ID = new CustomPayload.Id<>(NetworkChannels.TELEPORT_REQUEST_C2S);
